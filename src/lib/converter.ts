@@ -96,7 +96,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   return questions;
 };
 
-
 const PIXELS_TO_EMUS = 9525;
 const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
 const POINTS_TO_PIXELS = 4 / 3;
@@ -138,8 +137,8 @@ export const convertDocxToExcel = async (file: File) => {
   ];
 
   const headerRow = worksheet.getRow(1);
-  headerRow.font = { name: 'Calibri', bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.font = { name: 'Calibri', bold: true, size: 12 };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
   headerRow.fill = {
     type: 'pattern',
     pattern: 'solid',
@@ -152,7 +151,7 @@ export const convertDocxToExcel = async (file: File) => {
 
     const optionsMap: {[key: string]: string} = {};
     q.options.forEach(opt => {
-        const match = opt.match(/^\s*\(([A-D])\)/i);
+        const match = opt.match(/^\s*\([A-D]\)/i);
         if(match){
             const letter = match[1].toUpperCase();
             optionsMap[letter] = cleanOption(opt);
@@ -192,9 +191,8 @@ export const convertDocxToExcel = async (file: File) => {
             const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
 
             const textHeightInPixels = (questionTextLines * DEFAULT_ROW_HEIGHT_IN_POINTS) * POINTS_TO_PIXELS;
-            const spaceBetweenPixels = 10; // The crucial space between text and image
-
-            const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS + spaceBetweenPixels * PIXELS_TO_EMUS;
+            
+            const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS;
             const colOffsetInEmus = 5 * PIXELS_TO_EMUS;
             
             worksheet.addImage(imageId, {
@@ -202,7 +200,7 @@ export const convertDocxToExcel = async (file: File) => {
               ext: { width: imageWidthInPixels, height: imageHeightInPixels }
             });
 
-            const totalHeightInPixels = textHeightInPixels + spaceBetweenPixels + imageHeightInPixels + 5;
+            const totalHeightInPixels = textHeightInPixels + imageHeightInPixels + 5;
             questionCellHeightInPoints = totalHeightInPixels / POINTS_TO_PIXELS;
 
         } catch (e) { console.error("Could not add question image", e); }
@@ -232,9 +230,8 @@ export const convertDocxToExcel = async (file: File) => {
                     
                     const optionTextLines = ((optionsMap[letter] || '').match(/\n/g) || []).length + 1;
                     const textHeightInPixels = (optionTextLines * DEFAULT_ROW_HEIGHT_IN_POINTS) * POINTS_TO_PIXELS;
-                    const spaceBetweenPixels = 5;
 
-                    const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS + spaceBetweenPixels * PIXELS_TO_EMUS;
+                    const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS;
                     const colOffsetInEmus = 5 * PIXELS_TO_EMUS;
 
                     worksheet.addImage(imageId, {
@@ -242,7 +239,7 @@ export const convertDocxToExcel = async (file: File) => {
                         ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                     });
                     
-                    const totalOptionHeightInPixels = textHeightInPixels + spaceBetweenPixels + imageHeightInPixels + 5;
+                    const totalOptionHeightInPixels = textHeightInPixels + imageHeightInPixels + 5;
                     const totalOptionHeightInPoints = totalOptionHeightInPixels / POINTS_TO_PIXELS;
                     maxOptionImageHeightInPoints = Math.max(maxOptionImageHeightInPoints, totalOptionHeightInPoints);
                 } catch (e) { console.error(`Could not add image for option ${letter}`, e); }
