@@ -188,14 +188,13 @@ export const convertDocxToExcel = async (file: File) => {
             const imageId = workbook.addImage({ base64: data, extension });
             const imageDims = await getImageDimensions(imgData);
             
-            const imageWidthInPixels = 100; 
+            const imageWidthInPixels = 80; 
             const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
 
             const textHeightInPixels = (questionTextLines * DEFAULT_ROW_HEIGHT_IN_POINTS) * POINTS_TO_PIXELS;
-            const topMarginInPixels = 10; 
-            const bottomMarginInPixels = 5;
+            const spaceBetweenPixels = 10; // The crucial space between text and image
 
-            const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS;
+            const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS + spaceBetweenPixels * PIXELS_TO_EMUS;
             const colOffsetInEmus = 5 * PIXELS_TO_EMUS;
             
             worksheet.addImage(imageId, {
@@ -203,7 +202,7 @@ export const convertDocxToExcel = async (file: File) => {
               ext: { width: imageWidthInPixels, height: imageHeightInPixels }
             });
 
-            const totalHeightInPixels = textHeightInPixels + topMarginInPixels + imageHeightInPixels + bottomMarginInPixels;
+            const totalHeightInPixels = textHeightInPixels + spaceBetweenPixels + imageHeightInPixels + 5;
             questionCellHeightInPoints = totalHeightInPixels / POINTS_TO_PIXELS;
 
         } catch (e) { console.error("Could not add question image", e); }
@@ -228,15 +227,14 @@ export const convertDocxToExcel = async (file: File) => {
                     const imageId = workbook.addImage({ base64: data, extension });
                     const imageDims = await getImageDimensions(imgData);
 
-                    const imageWidthInPixels = 80; 
+                    const imageWidthInPixels = 80;
                     const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
                     
                     const optionTextLines = ((optionsMap[letter] || '').match(/\n/g) || []).length + 1;
                     const textHeightInPixels = (optionTextLines * DEFAULT_ROW_HEIGHT_IN_POINTS) * POINTS_TO_PIXELS;
-                    const topMarginInPixels = 5;
-                    const bottomMarginInPixels = 5;
+                    const spaceBetweenPixels = 5;
 
-                    const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS;
+                    const rowOffsetInEmus = textHeightInPixels * PIXELS_TO_EMUS + spaceBetweenPixels * PIXELS_TO_EMUS;
                     const colOffsetInEmus = 5 * PIXELS_TO_EMUS;
 
                     worksheet.addImage(imageId, {
@@ -244,7 +242,7 @@ export const convertDocxToExcel = async (file: File) => {
                         ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                     });
                     
-                    const totalOptionHeightInPixels = textHeightInPixels + topMarginInPixels + imageHeightInPixels + bottomMarginInPixels;
+                    const totalOptionHeightInPixels = textHeightInPixels + spaceBetweenPixels + imageHeightInPixels + 5;
                     const totalOptionHeightInPoints = totalOptionHeightInPixels / POINTS_TO_PIXELS;
                     maxOptionImageHeightInPoints = Math.max(maxOptionImageHeightInPoints, totalOptionHeightInPoints);
                 } catch (e) { console.error(`Could not add image for option ${letter}`, e); }
