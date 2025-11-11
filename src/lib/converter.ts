@@ -15,7 +15,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   if (typeof window === 'undefined') return questions;
 
   const container = document.createElement('div');
-  container.innerHTML = html;
+  container.innerHTML = html.replace(/°/g, ' deg'); // Preserve degree symbol
 
   const children = Array.from(container.children);
   let i = 0;
