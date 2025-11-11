@@ -193,14 +193,14 @@ export const convertDocxToExcel = async (file: File) => {
                   const imageWidthInPixels = 60; 
                   const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
                   
-                  // This is the offset from the top of the cell
+                  // This is the offset from the top of the cell, including a margin
                   const rowOffsetInPixels = textHeightInPixels + cumulativeImageHeight + IMAGE_MARGIN_PIXELS;
                   cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
 
                   const colOffsetInPixels = 5;
                   
                   worksheet.addImage(imageId, {
-                    tl: { col: cell.col - 1, row: cell.row - 1, rowOff: rowOffsetInPixels, colOff: colOffsetInPixels * PIXELS_TO_EMUS / 9525 },
+                    tl: { col: cell.col - 1, row: cell.row - 1, rowOff: rowOffsetInPixels * PIXELS_TO_EMUS / 9525, colOff: colOffsetInPixels * PIXELS_TO_EMUS / 9525 },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
               } catch (e) { console.error("Could not add image", e); }
@@ -208,7 +208,7 @@ export const convertDocxToExcel = async (file: File) => {
            totalImageHeightInPixels = cumulativeImageHeight;
         }
         
-        const totalCellHeightInPixels = textHeightInPixels + totalImageHeightInPixels;
+        const totalCellHeightInPixels = textHeightInPixels + totalImageHeightInPixels + (images.length > 0 ? IMAGE_MARGIN_PIXELS : 0);
         return totalCellHeightInPixels / POINTS_TO_PIXELS;
     };
     
