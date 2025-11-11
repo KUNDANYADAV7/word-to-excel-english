@@ -23,20 +23,16 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   container.innerHTML = html;
 
   const processContent = (element: HTMLElement): string => {
-    let content = '';
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = element.innerHTML;
     
-    // Handle superscripts like cm²
     tempDiv.querySelectorAll('sup').forEach(sup => {
       if (sup.textContent === '2') {
         sup.textContent = '²';
       }
     });
 
-    // Decode HTML entities to get the actual characters
     let text = tempDiv.textContent?.replace(/\s+/g, ' ').trim() || '';
-    // Replace placeholder for degree symbol
     text = text.replace(/ deg/g, '°');
     return text;
   };
@@ -161,7 +157,6 @@ export const convertDocxToExcel = async (file: File) => {
                 }
                 run.children.forEach(text => {
                     if (text.type === 'text') {
-                        // Replace degree symbol with a placeholder text to avoid conversion issues
                         text.value = text.value.replace(/°/g, ' deg');
                     }
                 });
@@ -260,10 +255,13 @@ export const convertDocxToExcel = async (file: File) => {
                     tl: { col: cell.col - 1, row: cell.row - 1 },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
-                  
-                   // Manually adjust the top left offset using EMU
-                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+
+                  const media = (worksheet as any).media;
+                  if (media && media.length > 0) {
+                     // Manually adjust the top left offset using EMU
+                    media[media.length - 1].range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
+                    media[media.length - 1].range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+                  }
 
               } catch (e) { console.error("Could not add image", e); }
            }
