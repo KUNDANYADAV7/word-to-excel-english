@@ -135,9 +135,9 @@ export const convertDocxToExcel = async (file: File) => {
 
   let currentRowNum = 2;
   for (const [index, q] of questions.entries()) {
-    
     const rowData: any = {
       sr: index + 1,
+      question: q.questionText,
     };
 
     const cleanOption = (text: string) => text.replace(/^\s*\([A-D]\)\s*/i, '').trim();
@@ -155,54 +155,40 @@ export const convertDocxToExcel = async (file: File) => {
     rowData['alt2'] = optionsMap['B'] || '';
     rowData['alt3'] = optionsMap['C'] || '';
     rowData['alt4'] = optionsMap['D'] || '';
-
-    let maxLines = 0;
-    Object.values(optionsMap).forEach(opt => {
-        maxLines = Math.max(maxLines, opt.split('\n').length);
-    });
-
-    let rowHeight = maxLines * 15 + 10;
     
-    const questionImages = q.images.filter(img => img.in === 'question');
-    let questionTextWithImages = q.questionText;
-
-    if(questionImages.length > 0){
-        // Add spacing for the image
-        const imageLineCount = 15; // approximate lines for a 225px tall image
-        questionTextWithImages += '\n'.repeat(imageLineCount);
-    }
-    
-    rowData['question'] = questionTextWithImages;
     const row = worksheet.addRow(rowData);
     row.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
-
-    const questionTextLineCount = q.questionText.split('\n').length;
-    rowHeight = Math.max(rowHeight, questionTextLineCount * 15 + 10);
     
+    const questionTextLineCount = q.questionText.split('\n').length;
+    // Estimate height based on text lines. 15px per line.
+    let cumulativeHeight = (questionTextLineCount * 15) + 10; // +10 for padding
 
+    const questionImages = q.images.filter(img => img.in === 'question');
     if (questionImages.length > 0) {
       const img = questionImages[0];
       if (img.data) {
-        const base64string = img.data;
         try {
+            const base64string = img.data;
             const extension = base64string.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
             const base64Data = base64string.substring(base64string.indexOf(',') + 1);
             const imageId = workbook.addImage({ base64: base64Data, extension });
             
-            const imageOffsetY = (questionTextLineCount + 1) * 15 * 0.75; // 15px per line, 0.75 converts to points
-            
+            const imageHeight = 225;
+            // rowOff is in pixels.
+            const rowOff = cumulativeHeight;
             worksheet.addImage(imageId, {
-              tl: { col: 1, row: currentRowNum - 1, colOff: 5 * 9525, rowOff: imageOffsetY * 9525 }, // Column B for Question
-              ext: { width: 300, height: 225 }
+              tl: { col: 1, row: currentRowNum - 1, rowOff: rowOff, colOff: 5 * 9525 / 914400 }, // Column B, offset from top
+              ext: { width: 300, height: imageHeight }
             });
-            rowHeight = Math.max(rowHeight, imageOffsetY + 225 + 10); 
+            cumulativeHeight += imageHeight + 10; // Add image height and padding
         } catch (e) {
-            console.error("Could not add image", e);
+            console.error("Could not add question image", e);
         }
       }
     }
     
-    // Add images for options in their respective columns
+    let maxOptionHeight = 0;
+     // Add images for options in their respective columns
     ['A', 'B', 'C', 'D'].forEach((letter, i) => {
         const optionImages = q.images.filter(img => img.in === `option${letter}`);
         if(optionImages.length > 0){
@@ -218,7 +204,7 @@ export const convertDocxToExcel = async (file: File) => {
                     tl: { col: 2 + i, row: currentRowNum - 1 }, // Columns C, D, E, F
                     ext: { width: 150, height: 112.5 }
                   });
-                  rowHeight = Math.max(rowHeight, 122.5);
+                  maxOptionHeight = Math.max(maxOptionHeight, 112.5 + 10);
                 } catch (e) {
                     console.error(`Could not add image for option ${letter}`, e);
                 }
@@ -226,7 +212,12 @@ export const convertDocxToExcel = async (file: File) => {
         }
     });
 
-    row.height = rowHeight;
+    const optionsLineCount = Math.max(
+      ...Object.values(optionsMap).map(opt => opt.split('\n').length), 0
+    );
+    maxOptionHeight = Math.max(maxOptionHeight, (optionsLineCount * 15) + 10);
+    
+    row.height = Math.max(cumulativeHeight, maxOptionHeight);
     currentRowNum = worksheet.rowCount + 1;
   }
   
