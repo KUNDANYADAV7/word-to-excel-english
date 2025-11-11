@@ -13,7 +13,7 @@ type Question = {
 const PIXELS_TO_EMUS = 9525;
 const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
 const POINTS_TO_PIXELS = 4 / 3;
-const IMAGE_MARGIN_PIXELS = 10;
+const IMAGE_MARGIN_PIXELS = 15; // Increased space between text and image
 
 const parseHtmlToQuestions = (html: string): Question[] => {
   const questions: Question[] = [];
@@ -22,7 +22,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   const container = document.createElement('div');
   container.innerHTML = html;
 
-  // This function now handles superscripts directly
   const processContent = (element: HTMLElement): string => {
     let content = '';
     element.childNodes.forEach(node => {
@@ -31,15 +30,13 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         } else if (node.nodeType === Node.ELEMENT_NODE) {
             const elem = node as HTMLElement;
             if (elem.tagName === 'SUP') {
-                content += '²'; // Directly use the superscript character
+                content += '²'; 
             } else if (elem.tagName === 'IMG') {
-                // Images are handled later, so we don't extract text from them
             } else {
-                content += elem.innerHTML; // Use innerHTML to preserve nested tags
+                content += elem.innerHTML;
             }
         }
     });
-    // A final cleanup to remove any leftover HTML tags and normalize spaces
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
     return tempDiv.textContent?.replace(/\s+/g, ' ').trim() || '';
@@ -79,14 +76,13 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
         if (nextEl.tagName === 'P') {
             if (optionRegex.test(nextText)) {
-              // Split options that might be on the same line, e.g. "(A) opt1 (B) opt2"
               const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
               for(const opt of sameLineOptions) {
                 if(optionRegex.test(opt)) {
                   questionData.options.push(opt);
                 }
               }
-            } else if (nextText) { // Append to previous element if it's just more text
+            } else if (nextText) {
                 if(questionData.options.length > 0) {
                     const lastOptionIndex = questionData.options.length - 1;
                     questionData.options[lastOptionIndex] += '\n' + nextText;
@@ -145,7 +141,6 @@ const getImageDimensions = (imgSrc: string): Promise<{ width: number; height: nu
 };
 
 const formatTextForExcel = (text: string) => {
-    // Replace "deg" placeholder with the actual degree symbol
     return text.replace(/(\d+)\s*deg/g, '$1°');
 };
 
@@ -153,7 +148,6 @@ const formatTextForExcel = (text: string) => {
 export const convertDocxToExcel = async (file: File) => {
   const arrayBuffer = await file.arrayBuffer();
 
-  // Replace degree symbol before HTML conversion to prevent it from being misinterpreted
   const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer }, {
     transformDocument: mammoth.transforms.paragraph(p => {
         p.children = p.children.map(run => {
@@ -231,7 +225,7 @@ export const convertDocxToExcel = async (file: File) => {
     const calculateCellHeight = async (cell: ExcelJS.Cell, text: string, images: {data: string, in: string}[]) => {
         const formattedText = formatTextForExcel(text);
         const lines = formattedText.split('\n');
-        const textHeightInPixels = lines.length * 16; // Approx height per line
+        const textHeightInPixels = lines.length * 16;
         
         let cumulativeImageHeight = 0;
 
@@ -242,10 +236,9 @@ export const convertDocxToExcel = async (file: File) => {
                   const imageId = workbook.addImage({ base64: data, extension });
                   const imageDims = await getImageDimensions(imgData.data);
                   
-                  const imageWidthInPixels = 60; 
+                  const imageWidthInPixels = 40; 
                   const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
                   
-                  // This is the offset from the top of the cell, including a margin
                   const rowOffsetInPixels = textHeightInPixels + cumulativeImageHeight + IMAGE_MARGIN_PIXELS;
                   cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
 
@@ -255,9 +248,13 @@ export const convertDocxToExcel = async (file: File) => {
                     tl: { col: cell.col - 1 + (colOffsetInPixels / (cell.width as number * 7)), row: cell.row - 1 + (rowOffsetInPixels / (cell.height as number * 1.5)) },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
-                   // Manually adjust the top left offset using EMU
-                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+                  
+                  const media = (worksheet as any).media;
+                  if (media && media.length > 0) {
+                    const lastImage = media[media.length - 1];
+                    lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
+                    lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+                  }
 
               } catch (e) { console.error("Could not add image", e); }
            }
