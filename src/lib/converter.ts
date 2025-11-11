@@ -180,31 +180,35 @@ export const convertDocxToExcel = async (file: File) => {
         const lines = (text.match(/\n/g) || []).length + text.split('\n').length;
         let textHeightInPixels = lines * 16; 
         let totalImageHeightInPixels = 0;
+        
+        let cumulativeImageHeight = 0;
 
         if (images.length > 0) {
-            const imgData = images[0].data;
-            if (imgData) {
-                try {
-                    const { extension, data } = getBase64Image(imgData);
-                    const imageId = workbook.addImage({ base64: data, extension });
-                    const imageDims = await getImageDimensions(imgData);
-                    
-                    const imageWidthInPixels = 60; 
-                    const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
-                    totalImageHeightInPixels = imageHeightInPixels;
-                    
-                    const rowOffsetInPixels = textHeightInPixels + IMAGE_MARGIN_PIXELS;
-                    const colOffsetInPixels = 5;
-                    
-                    worksheet.addImage(imageId, {
-                      tl: { col: cell.col - 1, row: cell.row - 1, rowOff: rowOffsetInPixels * PIXELS_TO_EMUS / 9525, colOff: colOffsetInPixels * PIXELS_TO_EMUS / 9525 },
-                      ext: { width: imageWidthInPixels, height: imageHeightInPixels }
-                    });
-                } catch (e) { console.error("Could not add image", e); }
-            }
+           for (const imgData of images) {
+              try {
+                  const { extension, data } = getBase64Image(imgData.data);
+                  const imageId = workbook.addImage({ base64: data, extension });
+                  const imageDims = await getImageDimensions(imgData.data);
+                  
+                  const imageWidthInPixels = 60; 
+                  const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
+                  
+                  // This is the offset from the top of the cell
+                  const rowOffsetInPixels = textHeightInPixels + cumulativeImageHeight + IMAGE_MARGIN_PIXELS;
+                  cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
+
+                  const colOffsetInPixels = 5;
+                  
+                  worksheet.addImage(imageId, {
+                    tl: { col: cell.col - 1, row: cell.row - 1, rowOff: rowOffsetInPixels, colOff: colOffsetInPixels * PIXELS_TO_EMUS / 9525 },
+                    ext: { width: imageWidthInPixels, height: imageHeightInPixels }
+                  });
+              } catch (e) { console.error("Could not add image", e); }
+           }
+           totalImageHeightInPixels = cumulativeImageHeight;
         }
         
-        const totalCellHeightInPixels = textHeightInPixels + (totalImageHeightInPixels > 0 ? totalImageHeightInPixels + IMAGE_MARGIN_PIXELS : 0);
+        const totalCellHeightInPixels = textHeightInPixels + totalImageHeightInPixels;
         return totalCellHeightInPixels / POINTS_TO_PIXELS;
     };
     
