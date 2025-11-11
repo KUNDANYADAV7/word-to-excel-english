@@ -10,18 +10,45 @@ type Question = {
   images: { data: string; in: 'question' | string }[];
 };
 
+const PIXELS_TO_EMUS = 9525;
+const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
+const POINTS_TO_PIXELS = 4 / 3;
+const IMAGE_MARGIN_PIXELS = 10;
+
 const parseHtmlToQuestions = (html: string): Question[] => {
   const questions: Question[] = [];
   if (typeof window === 'undefined') return questions;
 
   const container = document.createElement('div');
-  container.innerHTML = html.replace(/°/g, ' deg'); // Preserve degree symbol
+  container.innerHTML = html;
 
   const children = Array.from(container.children);
   let i = 0;
   while (i < children.length) {
     const el = children[i] as HTMLElement;
-    const text = el.innerText.trim();
+    
+    // Process innerHTML to retain formatting like <sup>
+    const processContent = (element: HTMLElement) => {
+        let content = '';
+        element.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                content += node.textContent;
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const elem = node as HTMLElement;
+                if (elem.tagName === 'SUP') {
+                    content += '^' + elem.textContent;
+                } else if (elem.tagName === 'IMG') {
+                    // This will be handled separately
+                }
+                else {
+                    content += elem.textContent;
+                }
+            }
+        });
+        return content.trim();
+    };
+
+    const text = processContent(el).replace(/\s+/g, ' ');
     const questionStartRegex = /^(?:Q|Question)?\s*\d+[.)]\s*/;
     
     if (el.tagName === 'P' && questionStartRegex.test(text)) {
@@ -39,7 +66,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
       let j = i + 1;
       while (j < children.length) {
         const nextEl = children[j] as HTMLElement;
-        const nextText = nextEl.innerText.trim();
+        const nextText = processContent(nextEl).replace(/\s+/g, ' ');
         const optionRegex = /^\s*\(([A-D])\)\s*/i;
 
         if (questionStartRegex.test(nextText)) {
@@ -96,10 +123,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   return questions;
 };
 
-const PIXELS_TO_EMUS = 9525;
-const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
-const POINTS_TO_PIXELS = 4 / 3;
-const IMAGE_MARGIN_PIXELS = 10;
 
 const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: string } => {
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
@@ -116,9 +139,21 @@ const getImageDimensions = (imgSrc: string): Promise<{ width: number; height: nu
     });
 };
 
+const formatTextForExcel = (text: string) => {
+    return text
+        .replace(/\^2/g, '²')
+        .replace(/\^3/g, '³')
+        .replace(/(\d+)\s*\^(\d+)/g, '$1^$2') // General superscript
+        .replace(/(\d+) deg/g, '$1°'); // Revert deg to degree symbol
+};
+
+
 export const convertDocxToExcel = async (file: File) => {
   const arrayBuffer = await file.arrayBuffer();
-  const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+
+  const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer });
+  const html = rawHtml.replace(/°/g, ' deg'); // Preserve degree symbol before parsing
+
   const questions = parseHtmlToQuestions(html);
 
   if (questions.length === 0) {
@@ -161,11 +196,11 @@ export const convertDocxToExcel = async (file: File) => {
 
     const row = worksheet.addRow({
       sr: index + 1,
-      question: q.questionText,
-      alt1: optionsMap['A'] || '',
-      alt2: optionsMap['B'] || '',
-      alt3: optionsMap['C'] || '',
-      alt4: optionsMap['D'] || '',
+      question: formatTextForExcel(q.questionText),
+      alt1: formatTextForExcel(optionsMap['A'] || ''),
+      alt2: formatTextForExcel(optionsMap['B'] || ''),
+      alt3: formatTextForExcel(optionsMap['C'] || ''),
+      alt4: formatTextForExcel(optionsMap['D'] || ''),
     });
     
     row.eachCell({ includeEmpty: true }, cell => {
@@ -177,8 +212,9 @@ export const convertDocxToExcel = async (file: File) => {
     let maxRowHeightInPoints = 0;
     
     const calculateCellHeight = async (cell: ExcelJS.Cell, text: string, images: {data: string, in: string}[]) => {
-        const lines = (text.match(/\n/g) || []).length + text.split('\n').length;
-        let textHeightInPixels = lines * 16; 
+        const formattedText = formatTextForExcel(text);
+        const lines = (formattedText.match(/\n/g) || []).length + formattedText.split('\n').length;
+        let textHeightInPixels = lines * 16;
         let totalImageHeightInPixels = 0;
         
         let cumulativeImageHeight = 0;
@@ -200,9 +236,13 @@ export const convertDocxToExcel = async (file: File) => {
                   const colOffsetInPixels = 5;
                   
                   worksheet.addImage(imageId, {
-                    tl: { col: cell.col - 1, row: cell.row - 1, rowOff: rowOffsetInPixels * PIXELS_TO_EMUS / 9525, colOff: colOffsetInPixels * PIXELS_TO_EMUS / 9525 },
+                    tl: { col: cell.col - 1, row: cell.row - 1 },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
+                   // Manually adjust the top left offset using EMU
+                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
+                  (worksheet as any).media[ (worksheet as any).media.length - 1 ].range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+
               } catch (e) { console.error("Could not add image", e); }
            }
            totalImageHeightInPixels = cumulativeImageHeight;
