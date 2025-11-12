@@ -16,7 +16,7 @@ type Question = {
 };
 
 const PIXELS_TO_EMUS = 9525;
-const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
+const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75;
 const POINTS_TO_PIXELS = 4 / 3;
 const IMAGE_MARGIN_PIXELS = 15;
 
@@ -76,34 +76,16 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         // Process images first, associating them with the correct option if present in the same element.
         const imagesInElement = Array.from(nextEl.querySelectorAll('img'));
         if (imagesInElement.length > 0) {
-            const parentTextForImage = nextEl.textContent || '';
-            const optionMatchInParent = parentTextForImage.match(optionRegex);
-            
             imagesInElement.forEach(img => {
                 if (img.src && !currentQuestion.images.some(existingImg => existingImg.data === img.src)) {
-                    let imagePlaced = false;
-                    const optionParts = nextEl.innerHTML.split(/\s*(?=\([A-D]\))/i);
-                    for (const part of optionParts) {
-                        const tempPartDiv = document.createElement('div');
-                        tempPartDiv.innerHTML = part;
-                        const partText = tempPartDiv.textContent || '';
-                        const match = partText.match(optionRegex);
+                    const parentTextForImage = nextEl.textContent || '';
+                    const optionMatchInParent = parentTextForImage.match(optionRegex);
 
-                        if (match && tempPartDiv.querySelector('img')) {
-                            const letter = match[1].toUpperCase();
-                            currentQuestion.images.push({ data: img.src, in: `option${letter}` });
-                            imagePlaced = true;
-                            break;
-                        }
-    
-                    }
-                    if (!imagePlaced) {
-                       if (optionMatchInParent && optionMatchInParent[1]) {
-                           const letter = optionMatchInParent[1].toUpperCase();
-                           currentQuestion.images.push({ data: img.src, in: `option${letter}` });
-                       } else {
-                           currentQuestion.images.push({ data: img.src, in: 'question' });
-                       }
+                    if (optionMatchInParent && optionMatchInParent[1]) {
+                        const letter = optionMatchInParent[1].toUpperCase();
+                        currentQuestion.images.push({ data: img.src, in: `option${letter}` });
+                    } else {
+                        currentQuestion.images.push({ data: img.src, in: 'question' });
                     }
                 }
             });
@@ -349,27 +331,83 @@ export const convertDocxToExcel = async (file: File) => {
 
 
 export const convertPdfToExcel = async (file: File) => {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-    
-    let htmlContent = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        let lastY = -1;
-        textContent.items.forEach(item => {
-            if ('str' in item) {
-                if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-                    htmlContent += '</p><p>';
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+  
+  let htmlContent = '';
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1.0 });
+    const ops = await page.getOperatorList();
+    const fn = ops.fnArray;
+    const args = ops.argsArray;
+
+    let imageYCoords: { [key: string]: number } = {};
+    const imagePromises: Promise<any>[] = [];
+
+    for (let i = 0; i < fn.length; i++) {
+        if (fn[i] === pdfjsLib.OPS.paintImageXObject) {
+            const imgKey = args[i][0];
+            const promise = page.objs.get(imgKey).then((img: any) => {
+                if (img) {
+                    const transform = page.transform(viewport.transform, ops.transformMatrix);
+                    const y = transform[5];
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        const imgData = ctx.createImageData(img.width, img.height);
+                        if (img.data.length === img.width * img.height * 4) { // RGBA
+                            imgData.data.set(img.data);
+                        } else if (img.data.length === img.width * img.height * 3) { // RGB
+                            const rgba = new Uint8ClampedArray(img.width * img.height * 4);
+                            for (let j = 0, k = 0; j < img.data.length; j += 3, k += 4) {
+                                rgba[k] = img.data[j];
+                                rgba[k + 1] = img.data[j + 1];
+                                rgba[k + 2] = img.data[j + 2];
+                                rgba[k + 3] = 255;
+                            }
+                            imgData.data.set(rgba);
+                        }
+                        ctx.putImageData(imgData, 0, 0);
+                        imageYCoords[canvas.toDataURL()] = y;
+                    }
                 }
-                htmlContent += item.str + ' ';
-                lastY = item.transform[5];
-            }
-        });
-        htmlContent += '</p>';
+            }).catch(e => console.error("Error processing image", e));
+            imagePromises.push(promise);
+        }
     }
+    await Promise.all(imagePromises);
 
-    const questions = parseHtmlToQuestions(`<p>${htmlContent}</p>`);
 
-    await generateExcelFromQuestions(questions, file.name);
+    let pageText = textContent.items.map(item => ({
+        str: 'str' in item ? item.str : '',
+        y: 'transform' in item ? item.transform[5] : null
+    }));
+
+    Object.entries(imageYCoords).forEach(([imgData, y]) => {
+        pageText.push({str: `<img src="${imgData}" />`, y});
+    });
+
+    pageText.sort((a, b) => (b.y || 0) - (a.y || 0));
+
+    let currentLine = '';
+    let lastY = pageText.length > 0 ? pageText[0].y : null;
+
+    for (const item of pageText) {
+        if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 5) { // Threshold for new line
+            htmlContent += `<p>${currentLine.trim()}</p>`;
+            currentLine = '';
+        }
+        currentLine += item.str + ' ';
+        lastY = item.y;
+    }
+    htmlContent += `<p>${currentLine.trim()}</p>`;
+  }
+
+  const questions = parseHtmlToQuestions(htmlContent);
+
+  await generateExcelFromQuestions(questions, file.name);
 };
