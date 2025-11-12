@@ -3,10 +3,10 @@
 import mammoth from 'mammoth';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
+import * as pdfjsLib from 'pdfjs-dist';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Set workerSrc to a CDN URL to avoid build issues with Next.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 
 type Question = {
