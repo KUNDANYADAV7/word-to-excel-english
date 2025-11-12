@@ -26,11 +26,11 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     container.innerHTML = html;
     
     let currentQuestion: Question | null = null;
-    let lastParagraphWasQuestion = false;
+    let lastActiveOption: string | null = null;
 
     const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]\s*/i;
-    const optionMarkerRegex = /^\(([A-D])\)/i;
-    const fullOptionRegex = /(\([A-D]\))/gi;
+    const optionMarkerRegex = /\(([A-D])\)/i;
+    const fullOptionRegex = /(\([A-D]\))/g;
 
     const finalizeQuestion = () => {
         if (currentQuestion) {
@@ -50,7 +50,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         
         let pText = p.textContent?.trim() || '';
         const pImages = Array.from(p.querySelectorAll('img'));
-        const pInnerHtml = p.innerHTML;
         const questionMatch = pText.match(questionStartRegex);
 
         if (questionMatch) {
@@ -63,61 +62,57 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             pImages.forEach(img => {
                 currentQuestion?.images.push({ data: img.src, in: 'question' });
             });
-            lastParagraphWasQuestion = true;
+            lastActiveOption = null;
         } else if (currentQuestion) {
-            const hasOptionMarker = fullOptionRegex.test(pInnerHtml);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = p.innerHTML;
+            const contentParts = tempDiv.innerHTML.split(fullOptionRegex).filter(part => part.trim() !== '');
             
-            if (hasOptionMarker) {
-                 lastParagraphWasQuestion = false;
-                // Split content by option markers, but keep the markers
-                const parts = pInnerHtml.split(fullOptionRegex).filter(part => part.trim() !== '');
-                
+            let hasOptionInParagraph = false;
+
+            if (p.innerHTML.match(fullOptionRegex)) {
                 let currentOptionLetter: string | null = null;
+                for (const part of contentParts) {
+                    const trimmedPart = part.trim();
+                    const optionMatch = trimmedPart.match(optionMarkerRegex);
 
-                for (const part of parts) {
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = part.trim();
-                    const partText = tempDiv.textContent?.trim() || '';
-                    const partImages = Array.from(tempDiv.querySelectorAll('img'));
-
-                    const optionMatch = part.trim().match(optionMarkerRegex);
-
-                     if (optionMatch) {
+                    if (optionMatch && trimmedPart.length <= 4) { // Catches '(A)', '(B)' etc.
                         currentOptionLetter = optionMatch[1].toUpperCase();
                         if (currentQuestion.options[currentOptionLetter] === undefined) {
                             currentQuestion.options[currentOptionLetter] = '';
                         }
+                        lastActiveOption = currentOptionLetter;
+                        hasOptionInParagraph = true;
                     } else if (currentOptionLetter) {
-                        if (partText) {
-                            currentQuestion.options[currentOptionLetter] += (currentQuestion.options[currentOptionLetter] ? ' ' : '') + partText;
-                        }
+                        const partDiv = document.createElement('div');
+                        partDiv.innerHTML = trimmedPart;
+                        const partText = partDiv.textContent || '';
+                        const partImages = Array.from(partDiv.querySelectorAll('img'));
+
+                        currentQuestion.options[currentOptionLetter] += (currentQuestion.options[currentOptionLetter] ? ' ' : '') + partText;
                         partImages.forEach(img => {
                             currentQuestion!.images.push({ data: img.src, in: `option${currentOptionLetter}` });
                         });
-                    } else {
-                         // Content before any option marker in this paragraph belongs to the question
-                        if (partText) {
-                            currentQuestion.questionText += `\n${partText}`;
-                        }
-                        partImages.forEach(img => {
-                            currentQuestion!.images.push({ data: img.src, in: 'question' });
-                        });
+                        lastActiveOption = currentOptionLetter;
                     }
                 }
-            } else {
-                 if (lastParagraphWasQuestion && pImages.length > 0 && !pText) {
-                    // This is likely an image for the question on a new line.
-                     pImages.forEach(img => {
-                        currentQuestion!.images.push({ data: img.src, in: 'question' });
-                    });
-                }
-                else if (pText) {
+            }
+            
+            // If paragraph has no option markers but has an image, and last active thing was an option,
+            // associate the image with the last seen option.
+            if (!hasOptionInParagraph && pImages.length > 0 && lastActiveOption && pText.length === 0) {
+                 pImages.forEach(img => {
+                    currentQuestion!.images.push({ data: img.src, in: `option${lastActiveOption}` });
+                });
+            } else if (!hasOptionInParagraph) {
+                // If it's just text or text with images, append to question
+                 if (pText) {
                     currentQuestion.questionText += `\n${pText}`;
-                     pImages.forEach(img => {
-                        currentQuestion!.images.push({ data: img.src, in: 'question' });
-                    });
                 }
-                 lastParagraphWasQuestion = true;
+                pImages.forEach(img => {
+                    currentQuestion!.images.push({ data: img.src, in: 'question' });
+                });
+                lastActiveOption = null; // Text content resets the context to the question
             }
         }
     }
@@ -382,3 +377,5 @@ export const parseFile = async (file: File): Promise<Question[]> => {
 
     return parseHtmlToQuestions(htmlContent);
 };
+
+    
