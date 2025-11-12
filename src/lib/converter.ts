@@ -70,8 +70,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         }
 
         const optionRegex = /\s*\(([A-D])\)\s*/i;
-        const parts = nextText.split(optionRegex).filter(p => p.trim() !== '');
-
+        
         let isOptionLine = false;
         if(nextEl.tagName === 'P' && optionRegex.test(nextText)) {
           isOptionLine = true;
@@ -233,7 +232,7 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
                   
-                  if ((worksheet as any).media?.length > 0) {
+                  if ((worksheet as any).media && (worksheet as any).media.length > 0) {
                     const lastImage = (worksheet as any).media[(worksheet as any).media.length - 1];
                     if (lastImage && lastImage.range) {
                       lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
