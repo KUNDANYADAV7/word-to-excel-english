@@ -30,14 +30,11 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     const finalizeQuestion = () => {
         if (currentQuestion) {
-            // Trim final question text
             currentQuestion.questionText = currentQuestion.questionText.trim();
-            // Trim all option text
             for (const key in currentQuestion.options) {
                 currentQuestion.options[key] = currentQuestion.options[key].trim();
             }
             questions.push(currentQuestion);
-            currentQuestion = null;
         }
     };
     
@@ -61,52 +58,50 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                 currentQuestion?.images.push({ data: img.src, in: 'question' });
             });
         } else if (currentQuestion) {
-            const optionRegex = /(\([A-D]\))/gi;
-            // Use innerHTML to preserve image tags
             const rawHtmlContent = p.innerHTML;
-            
-            // Check if the paragraph contains any option markers at all
-            if (optionRegex.test(rawHtmlContent)) {
-                 // Split the paragraph by option markers.
-                const parts = rawHtmlContent.split(optionRegex).filter(part => part.trim() !== '');
+            const optionRegex = /(\([A-D]\))/gi;
 
+            if (optionRegex.test(rawHtmlContent)) {
+                // This regex splits the content by option markers like (A), (B), etc.
+                // The filter removes empty strings from the result.
+                const parts = rawHtmlContent.split(optionRegex).filter(part => part.trim() !== '');
+                
                 let currentOptionLetter: string | null = null;
 
-                parts.forEach(part => {
+                for (const part of parts) {
                     const tempDiv = document.createElement('div');
                     tempDiv.innerHTML = part.trim();
                     const partText = tempDiv.textContent?.trim() || '';
                     const partImages = Array.from(tempDiv.querySelectorAll('img'));
 
                     const optionMatch = part.match(/^\(([A-D])\)$/i);
+
                     if (optionMatch) {
                         currentOptionLetter = optionMatch[1].toUpperCase();
-                        // Initialize option if not present
-                        if (!currentQuestion!.options[currentOptionLetter]) {
-                            currentQuestion!.options[currentOptionLetter] = '';
+                        // Initialize the option. This is crucial for image-only options.
+                        if (!currentQuestion.options[currentOptionLetter]) {
+                            currentQuestion.options[currentOptionLetter] = '';
                         }
                     } else if (currentOptionLetter) {
-                        // This part is content for the current option
+                        // This part is the content for the current option
                         if (partText) {
-                            currentQuestion!.options[currentOptionLetter] += (currentQuestion!.options[currentOptionLetter] ? ' ' : '') + partText;
+                            currentQuestion.options[currentOptionLetter] += (currentQuestion.options[currentOptionLetter] ? ' ' : '') + partText;
                         }
                         partImages.forEach(img => {
                             currentQuestion!.images.push({ data: img.src, in: `option${currentOptionLetter}` });
                         });
                     } else {
-                        // This is content before the first option marker in this paragraph
-                        // It belongs to the question.
+                        // Content before the first option marker belongs to the question
                         if (partText) {
-                            currentQuestion!.questionText += `\n${partText}`;
+                            currentQuestion.questionText += `\n${partText}`;
                         }
                         partImages.forEach(img => {
                             currentQuestion!.images.push({ data: img.src, in: 'question' });
                         });
                     }
-                });
-
+                }
             } else {
-                // This entire paragraph has no option markers, so it's a continuation of the question.
+                // No option markers in this paragraph, so it's a continuation of the question.
                 if (pText) {
                     currentQuestion.questionText += `\n${pText}`;
                 }
@@ -120,7 +115,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     finalizeQuestion();
     return questions;
 };
-
 
 const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: string } => {
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
@@ -141,7 +135,7 @@ const formatTextForExcel = (text: string): string => {
     return text;
 };
 
-const generateExcelFromQuestions = async (questions: Question[]): Promise<Blob> => {
+export const generateExcelFromQuestions = async (questions: Question[]): Promise<Blob> => {
   if (questions.length === 0) {
     throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)').");
   }
@@ -286,107 +280,95 @@ const generateExcelFromQuestions = async (questions: Question[]): Promise<Blob> 
   return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 };
 
+export const parseFile = async (file: File): Promise<Question[]> => {
+    let htmlContent = '';
+    if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        const arrayBuffer = await file.arrayBuffer();
+        const { value } = await mammoth.convertToHtml({ arrayBuffer });
+        htmlContent = value;
+    } else if (file.type === "application/pdf") {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const viewport = page.getViewport({ scale: 1.5 });
+            const ops = await page.getOperatorList();
+            
+            const imagePromises: Promise<any>[] = [];
+            let imageYCoords: { [key: string]: {y: number, x: number} } = {};
 
-export const convertDocxToExcel = async (file: File): Promise<{ questions: Question[], excelBlob: Blob }> => {
-  const arrayBuffer = await file.arrayBuffer();
+            for (let i = 0; i < ops.fnArray.length; i++) {
+                if (ops.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
+                    const imgKey = ops.argsArray[i][0];
+                    const promise = page.objs.get(imgKey).then((img: any) => {
+                        if (!img) return;
 
-  const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer }, {
-      transformDocument: mammoth.transforms.paragraph(p => {
-          // ensure each paragraph is processed
-          return p;
-      })
-    });
-  
-  const questions = parseHtmlToQuestions(rawHtml);
-  const excelBlob = await generateExcelFromQuestions(questions);
-  return { questions, excelBlob };
-};
+                        const transform = page.transform(viewport.transform, ops.transformMatrix);
+                        const y = transform[5];
+                        const x = transform[4];
 
-
-export const convertPdfToExcel = async (file: File): Promise<{ questions: Question[], excelBlob: Blob }> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-  
-  let htmlContent = '';
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const viewport = page.getViewport({ scale: 1.5 }); // Increased scale for better coordinate precision
-    const ops = await page.getOperatorList();
-    
-    const imagePromises: Promise<any>[] = [];
-    let imageYCoords: { [key: string]: {y: number, x: number} } = {};
-
-    for (let i = 0; i < ops.fnArray.length; i++) {
-        if (ops.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
-            const imgKey = ops.argsArray[i][0];
-            const promise = page.objs.get(imgKey).then((img: any) => {
-                if (!img) return;
-
-                const transform = page.transform(viewport.transform, ops.transformMatrix);
-                const y = transform[5];
-                const x = transform[4];
-
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    const imgData = ctx.createImageData(img.width, img.height);
-                    if (img.data.length === img.width * img.height * 4) { // RGBA
-                        imgData.data.set(img.data);
-                    } else if (img.data.length === img.width * img.height * 3) { // RGB
-                        const rgba = new Uint8ClampedArray(img.width * img.height * 4);
-                        for (let j = 0, k = 0; j < img.data.length; j += 3, k += 4) {
-                            rgba[k] = img.data[j];
-                            rgba[k + 1] = img.data[j + 1];
-                            rgba[k + 2] = img.data[j + 2];
-                            rgba[k + 3] = 255;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            const imgData = ctx.createImageData(img.width, img.height);
+                            if (img.data.length === img.width * img.height * 4) { // RGBA
+                                imgData.data.set(img.data);
+                            } else if (img.data.length === img.width * img.height * 3) { // RGB
+                                const rgba = new Uint8ClampedArray(img.width * img.height * 4);
+                                for (let j = 0, k = 0; j < img.data.length; j += 3, k += 4) {
+                                    rgba[k] = img.data[j];
+                                    rgba[k + 1] = img.data[j + 1];
+                                    rgba[k + 2] = img.data[j + 2];
+                                    rgba[k + 3] = 255;
+                                }
+                                imgData.data.set(rgba);
+                            }
+                            ctx.putImageData(imgData, 0, 0);
+                            imageYCoords[canvas.toDataURL()] = { y, x };
                         }
-                        imgData.data.set(rgba);
-                    }
-                    ctx.putImageData(imgData, 0, 0);
-                    imageYCoords[canvas.toDataURL()] = { y, x };
+                    }).catch(e => console.error("Error processing PDF image", e));
+                    imagePromises.push(promise);
                 }
-            }).catch(e => console.error("Error processing PDF image", e));
-            imagePromises.push(promise);
-        }
-    }
-    await Promise.all(imagePromises);
+            }
+            await Promise.all(imagePromises);
 
-    let pageItems: { str: string, y: number, x: number }[] = textContent.items.map(item => ({
-        str: 'str' in item ? item.str : '',
-        y: 'transform' in item ? item.transform[5] : 0,
-        x: 'transform' in item ? item.transform[4] : 0,
-    }));
+            let pageItems: { str: string, y: number, x: number }[] = textContent.items.map(item => ({
+                str: 'str' in item ? item.str : '',
+                y: 'transform' in item ? item.transform[5] : 0,
+                x: 'transform' in item ? item.transform[4] : 0,
+            }));
 
-    Object.entries(imageYCoords).forEach(([imgData, coords]) => {
-        pageItems.push({str: `<img src="${imgData}" />`, y: coords.y, x: coords.x});
-    });
+            Object.entries(imageYCoords).forEach(([imgData, coords]) => {
+                pageItems.push({str: `<img src="${imgData}" />`, y: coords.y, x: coords.x});
+            });
 
-    pageItems.sort((a, b) => {
-        if (Math.abs(b.y - a.y) < 5) { // Line height threshold
-            return a.x - b.x;
-        }
-        return b.y - a.y;
-    });
+            pageItems.sort((a, b) => {
+                if (Math.abs(b.y - a.y) < 5) { // Line height threshold
+                    return a.x - b.x;
+                }
+                return b.y - a.y;
+            });
 
-    let currentLine = '';
-    let lastY = pageItems.length > 0 ? pageItems[0].y : null;
+            let currentLine = '';
+            let lastY = pageItems.length > 0 ? pageItems[0].y : null;
 
-    for (const item of pageItems) {
-        if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) { // New line threshold
+            for (const item of pageItems) {
+                if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) { // New line threshold
+                    if (currentLine.trim()) htmlContent += `<p>${currentLine.trim()}</p>`;
+                    currentLine = '';
+                }
+                currentLine += item.str.includes('<img') ? item.str : ` ${item.str} `;
+                lastY = item.y;
+            }
             if (currentLine.trim()) htmlContent += `<p>${currentLine.trim()}</p>`;
-            currentLine = '';
         }
-        currentLine += item.str.includes('<img') ? item.str : ` ${item.str} `;
-        lastY = item.y;
+    } else {
+        throw new Error("Unsupported file type");
     }
-    if (currentLine.trim()) htmlContent += `<p>${currentLine.trim()}</p>`;
-  }
 
-  const questions = parseHtmlToQuestions(htmlContent);
-
-  const excelBlob = await generateExcelFromQuestions(questions);
-  return { questions, excelBlob };
+    return parseHtmlToQuestions(htmlContent);
 };
