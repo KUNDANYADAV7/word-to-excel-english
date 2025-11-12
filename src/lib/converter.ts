@@ -26,11 +26,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     container.innerHTML = html;
     
     let currentQuestion: Question | null = null;
-    let lastActiveOption: string | null = null;
-
+    
     const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]\s*/i;
-    const optionMarkerRegex = /\(([A-D])\)/i;
-    const fullOptionRegex = /(\([A-D]\))/g;
 
     const finalizeQuestion = () => {
         if (currentQuestion) {
@@ -47,9 +44,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     for (const p of paragraphs) {
         if (!(p instanceof HTMLElement)) continue;
-        
+
         let pText = p.textContent?.trim() || '';
-        const pImages = Array.from(p.querySelectorAll('img'));
         const questionMatch = pText.match(questionStartRegex);
 
         if (questionMatch) {
@@ -59,60 +55,64 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                 options: {},
                 images: [],
             };
+            const pImages = Array.from(p.querySelectorAll('img'));
             pImages.forEach(img => {
                 currentQuestion?.images.push({ data: img.src, in: 'question' });
             });
-            lastActiveOption = null;
         } else if (currentQuestion) {
-            const tempDiv = document.createElement('div');
+            const optionMarkerRegex = /\(([A-D])\)/;
+            const fullOptionRegex = /(\([A-D]\))/g;
+            let tempDiv = document.createElement('div');
             tempDiv.innerHTML = p.innerHTML;
-            const contentParts = tempDiv.innerHTML.split(fullOptionRegex).filter(part => part.trim() !== '');
             
-            let hasOptionInParagraph = false;
+            // This regex will split the content by option markers, but keep the markers
+            const contentParts = tempDiv.innerHTML.split(fullOptionRegex).filter(part => part.trim() !== '');
 
+            let hasOptionInParagraph = false;
             if (p.innerHTML.match(fullOptionRegex)) {
+                hasOptionInParagraph = true;
                 let currentOptionLetter: string | null = null;
-                for (const part of contentParts) {
+
+                for (let i = 0; i < contentParts.length; i++) {
+                    const part = contentParts[i];
                     const trimmedPart = part.trim();
                     const optionMatch = trimmedPart.match(optionMarkerRegex);
 
-                    if (optionMatch && trimmedPart.length <= 4) { // Catches '(A)', '(B)' etc.
+                    if (optionMatch && trimmedPart.length <= 4) { // It's a marker like '(A)'
                         currentOptionLetter = optionMatch[1].toUpperCase();
                         if (currentQuestion.options[currentOptionLetter] === undefined) {
                             currentQuestion.options[currentOptionLetter] = '';
                         }
-                        lastActiveOption = currentOptionLetter;
-                        hasOptionInParagraph = true;
-                    } else if (currentOptionLetter) {
+                    } else if (currentOptionLetter) { // It's content for the last found marker
                         const partDiv = document.createElement('div');
                         partDiv.innerHTML = trimmedPart;
-                        const partText = partDiv.textContent || '';
+                        const partText = (partDiv.textContent || '').trim();
                         const partImages = Array.from(partDiv.querySelectorAll('img'));
-
-                        currentQuestion.options[currentOptionLetter] += (currentQuestion.options[currentOptionLetter] ? ' ' : '') + partText;
+                        
+                        if(partText) {
+                            currentQuestion.options[currentOptionLetter] += (currentQuestion.options[currentOptionLetter] ? ' ' : '') + partText;
+                        }
                         partImages.forEach(img => {
                             currentQuestion!.images.push({ data: img.src, in: `option${currentOptionLetter}` });
                         });
-                        lastActiveOption = currentOptionLetter;
+
+                        // If an option is just an image, sometimes it appears as (B) then <img> in the next part
+                        if (partImages.length > 0 && !partText) {
+                             currentQuestion.options[currentOptionLetter] = currentQuestion.options[currentOptionLetter] || ''; // ensure option exists
+                        }
                     }
                 }
             }
-            
-            // If paragraph has no option markers but has an image, and last active thing was an option,
-            // associate the image with the last seen option.
-            if (!hasOptionInParagraph && pImages.length > 0 && lastActiveOption && pText.length === 0) {
-                 pImages.forEach(img => {
-                    currentQuestion!.images.push({ data: img.src, in: `option${lastActiveOption}` });
-                });
-            } else if (!hasOptionInParagraph) {
+
+            if (!hasOptionInParagraph) {
                 // If it's just text or text with images, append to question
-                 if (pText) {
+                if (pText) {
                     currentQuestion.questionText += `\n${pText}`;
                 }
+                const pImages = Array.from(p.querySelectorAll('img'));
                 pImages.forEach(img => {
                     currentQuestion!.images.push({ data: img.src, in: 'question' });
                 });
-                lastActiveOption = null; // Text content resets the context to the question
             }
         }
     }
@@ -377,5 +377,3 @@ export const parseFile = async (file: File): Promise<Question[]> => {
 
     return parseHtmlToQuestions(htmlContent);
 };
-
-    
