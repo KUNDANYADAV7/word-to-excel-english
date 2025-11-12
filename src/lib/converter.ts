@@ -50,7 +50,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         if (questionMatch) {
             finalizeQuestion();
             const questionNumber = questionMatch[1];
-            let questionText = pText.substring(questionMatch[0].length).trim();
             
             currentQuestion = {
                 questionText: "",
@@ -59,9 +58,10 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             };
             
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = pHTML.substring(pHTML.indexOf(questionNumber) + questionNumber.length).replace(/^[.)]?\s*/, '');
+            const questionHtmlContent = pHTML.substring(pHTML.toLowerCase().indexOf(questionMatch[0].toLowerCase()) + questionMatch[0].length);
+            tempDiv.innerHTML = questionHtmlContent;
 
-            const imagesInQuestionLine = Array.from(tempDiv.querySelectorAll('img'));
+            const imagesInLine = Array.from(tempDiv.querySelectorAll('img'));
             
             const optionMarkerRegex = /\(([A-Z])\)/g;
             const markers = [...tempDiv.innerHTML.matchAll(optionMarkerRegex)];
@@ -69,7 +69,13 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             if (markers.length > 0) {
                 // Question and options are on the same line
                 const parts = tempDiv.innerHTML.split(optionMarkerRegex);
-                currentQuestion.questionText = (document.createElement('div').innerHTML = parts[0]).textContent?.trim() || '';
+                const questionPartDiv = document.createElement('div');
+                questionPartDiv.innerHTML = parts[0];
+                currentQuestion.questionText = questionPartDiv.textContent?.trim() || '';
+
+                Array.from(questionPartDiv.querySelectorAll('img')).forEach(img => {
+                     currentQuestion!.images.push({ data: img.src, in: 'question' });
+                 });
 
                 let partIndex = 1;
                 for (const marker of markers) {
@@ -81,20 +87,20 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                     
                     currentQuestion.options[optionLetter] = contentDiv.textContent?.trim() || '';
                     
-                    Array.from(contentDiv.querySelectorAll('img')).forEach(img => {
+                    const imagesInOption = Array.from(contentDiv.querySelectorAll('img'));
+                    imagesInOption.forEach(img => {
                         currentQuestion!.images.push({ data: img.src, in: `option${optionLetter}` });
                     });
-                     if (Array.from(contentDiv.querySelectorAll('img')).length > 0 && !currentQuestion.options[optionLetter]) {
+
+                     if (imagesInOption.length > 0 && !currentQuestion.options[optionLetter]) {
                         currentQuestion.options[optionLetter] = ''; // Ensure option exists
                     }
+                    partIndex += 2;
                 }
-                 Array.from((document.createElement('div').innerHTML = parts[0]).querySelectorAll('img')).forEach(img => {
-                     currentQuestion!.images.push({ data: img.src, in: 'question' });
-                 });
 
             } else {
                  currentQuestion.questionText = tempDiv.textContent?.trim() || '';
-                 imagesInQuestionLine.forEach(img => {
+                 imagesInLine.forEach(img => {
                     currentQuestion!.images.push({ data: img.src, in: 'question' });
                  });
             }
@@ -107,16 +113,21 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             
             if (markers.length > 0) {
                 const parts = pHTML.split(optionMarkerRegex);
-                let textBefore = (document.createElement('div').innerHTML = parts[0]).textContent?.trim() || '';
                 
-                if (textBefore && lastProcessedElement === 'option' && lastOptionKey) {
-                    currentQuestion.options[lastOptionKey] = (currentQuestion.options[lastOptionKey] || '') + '\n' + textBefore;
-                } else if(textBefore && lastProcessedElement === 'question'){
-                    currentQuestion.questionText += '\n' + textBefore;
+                const beforePartDiv = document.createElement('div');
+                beforePartDiv.innerHTML = parts[0];
+                const textBefore = beforePartDiv.textContent?.trim() || '';
+                
+                if (textBefore) {
+                  if (lastProcessedElement === 'option' && lastOptionKey) {
+                      currentQuestion.options[lastOptionKey] = (currentQuestion.options[lastOptionKey] || '') + '\n' + textBefore;
+                  } else if(lastProcessedElement === 'question'){
+                      currentQuestion.questionText += '\n' + textBefore;
+                  }
                 }
 
-                Array.from((document.createElement('div').innerHTML = parts[0]).querySelectorAll('img')).forEach(img => {
-                    const target = lastOptionKey ? `option${lastOptionKey}` : 'question';
+                Array.from(beforePartDiv.querySelectorAll('img')).forEach(img => {
+                    const target = lastProcessedElement === 'option' && lastOptionKey ? `option${lastOptionKey}` : 'question';
                     currentQuestion!.images.push({ data: img.src, in: target });
                 });
 
@@ -131,7 +142,10 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                     const contentDiv = document.createElement('div');
                     contentDiv.innerHTML = contentPart;
 
-                    currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + (contentDiv.textContent?.trim() || '');
+                    const optionText = contentDiv.textContent?.trim() || '';
+                    if (optionText) {
+                      currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + optionText;
+                    }
                     
                     const imagesInPart = Array.from(contentDiv.querySelectorAll('img'));
                     imagesInPart.forEach(img => {
