@@ -71,7 +71,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             if (optionRegex.test(nextText)) {
               const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
               for(const opt of sameLineOptions) {
-                if(optionRegex.test(opt)) {
+                const optionMatch = opt.match(optionRegex);
+                if(optionMatch && optionMatch[1]) {
                   questionData.options.push(opt);
                 }
               }
@@ -146,9 +147,9 @@ export const convertDocxToExcel = async (file: File) => {
         p.children.forEach(run => {
             if (run.type === 'run') {
                 if (run.isSuperscript) {
-                    run.children.forEach(text => {
-                        if (text.type === 'text') {
-                            // Keep superscript logic simple for now
+                     run.children.forEach(text => {
+                        if (text.type === 'text' && text.value === '2') {
+                           text.value = '²';
                         }
                     });
                 }
@@ -222,14 +223,17 @@ export const convertDocxToExcel = async (file: File) => {
     
     const calculateCellHeight = async (cell: ExcelJS.Cell, text: string, images: {data: string, in: string}[]) => {
         const formattedText = formatTextForExcel(text);
-        const lines = formattedText.split('\n');
         
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        if(!context) return { totalHeight: 0, textHeight: 0 };
-        context.font = "11pt Calibri";
-        const textMetrics = context.measureText(formattedText);
-        const textHeightInPixels = (textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent) * lines.length;
+        let textHeightInPixels = 0;
+        if (formattedText) {
+          const lines = formattedText.split('\n');
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if(!context) return { totalHeight: 0, textHeight: 0 };
+          context.font = "11pt Calibri";
+          const textMetrics = context.measureText(formattedText);
+          textHeightInPixels = (textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent + 5) * lines.length;
+        }
         
         let cumulativeImageHeight = 0;
         let currentImageOffset = textHeightInPixels;
@@ -244,7 +248,7 @@ export const convertDocxToExcel = async (file: File) => {
                   const imageWidthInPixels = 100;
                   const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
                   
-                  const rowOffsetInPixels = currentImageOffset + IMAGE_MARGIN_PIXELS;
+                  const rowOffsetInPixels = currentImageOffset + (currentImageOffset > 0 ? IMAGE_MARGIN_PIXELS : 0);
                   cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
                   currentImageOffset += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
 
@@ -257,9 +261,11 @@ export const convertDocxToExcel = async (file: File) => {
 
                   const media = (worksheet as any).media;
                   if (media && media.length > 0) {
-                     // Manually adjust the top left offset using EMU
-                    media[media.length - 1].range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                    media[media.length - 1].range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+                    const lastImage = media[media.length - 1];
+                    if (lastImage && lastImage.range) {
+                      lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
+                      lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
+                    }
                   }
 
               } catch (e) { console.error("Could not add image", e); }
