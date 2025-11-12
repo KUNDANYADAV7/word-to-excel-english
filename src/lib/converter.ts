@@ -2,14 +2,12 @@
 
 import mammoth from 'mammoth';
 import * as ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set workerSrc to a CDN URL to avoid build issues with Next.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-
-type Question = {
+export type Question = {
   questionText: string;
   options: { [key: string]: string };
   images: { data: string; in: 'question' | string }[];
@@ -19,7 +17,6 @@ const PIXELS_TO_EMUS = 9525;
 const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75;
 const POINTS_TO_PIXELS = 4 / 3;
 const IMAGE_MARGIN_PIXELS = 15;
-
 
 const parseHtmlToQuestions = (html: string): Question[] => {
   const questions: Question[] = [];
@@ -54,15 +51,74 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         images: [],
       };
 
-      el.querySelectorAll('img').forEach(img => {
-        if(img.src && !currentQuestion.images.some(existing => existing.data === img.src)) {
-            currentQuestion.images.push({ data: img.src, in: 'question' });
-        }
-      });
+      const questionImages = Array.from(el.querySelectorAll('img'));
+      let questionHasOptionInSameLine = /\([A-D]\)/i.test(el.textContent || "");
 
-      let j = i + 1;
+      if (!questionHasOptionInSameLine) {
+        questionImages.forEach(img => {
+          if(img.src && !currentQuestion.images.some(existing => existing.data === img.src)) {
+            currentQuestion.images.push({ data: img.src, in: 'question' });
+          }
+        });
+      }
+
+      let j = i;
       let lastOptionLetter: string | null = null;
-      
+      let isOptionLine = false;
+
+      const processParagraph = (pEl: HTMLElement) => {
+        const nextText = processTextContent(pEl);
+        const optionRegex = /\s*\(([A-D])\)\s*/i;
+
+        const pImages = Array.from(pEl.querySelectorAll('img'));
+        
+        isOptionLine = false;
+        const parts = nextText.split(/\s*(?=\([B-D]\))/i);
+        const optionMatchInLine = nextText.match(optionRegex);
+        
+        if (optionMatchInLine && optionMatchInLine[1]) {
+            isOptionLine = true;
+            const sameLineOptions = nextText.split(/\s*(?=\([A-D]\))/i);
+            for(const opt of sameLineOptions) {
+              const optionMatch = opt.match(optionRegex);
+              if(optionMatch && optionMatch[1]) {
+                const letter = optionMatch[1].toUpperCase();
+                const optionText = opt.replace(optionRegex, '').trim();
+                currentQuestion.options[letter] = ((currentQuestion.options[letter] || '') + ' ' + optionText).trim();
+                lastOptionLetter = letter;
+                
+                const imgInParentP = pEl.innerHTML.includes(optionMatch[0]);
+                if (imgInParentP && pImages.length > 0) {
+                    pImages.forEach(img => {
+                        if (img.src && !currentQuestion.images.some(existing => existing.data === img.src)) {
+                            currentQuestion.images.push({ data: img.src, in: `option${letter}` });
+                        }
+                    });
+                }
+              }
+            }
+        } else if (nextText && lastOptionLetter) {
+            currentQuestion.options[lastOptionLetter] += '\n' + nextText;
+        } else if (j > i) { 
+            currentQuestion.questionText += '\n' + nextText;
+        }
+
+        if (isOptionLine && pImages.length > 0 && lastOptionLetter) {
+           pImages.forEach(img => {
+              if (img.src && !currentQuestion.images.some(existing => existing.data === img.src)) {
+                 if (!currentQuestion.images.some(imgStored => imgStored.in.startsWith('option'))){
+                    currentQuestion.images.push({ data: img.src, in: `option${lastOptionLetter}` });
+                 }
+              }
+           });
+        }
+      };
+
+      if (j === i) {
+          processParagraph(el);
+          j++;
+      }
+
       while (j < children.length) {
         const nextEl = children[j] as HTMLElement;
         const nextText = processTextContent(nextEl);
@@ -71,52 +127,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
           break; 
         }
 
-        const optionRegex = /\s*\(([A-D])\)\s*/i;
-
-        // Process images first, associating them with the correct option if present in the same element.
-        const imagesInElement = Array.from(nextEl.querySelectorAll('img'));
-        if (imagesInElement.length > 0) {
-            imagesInElement.forEach(img => {
-                if (img.src && !currentQuestion.images.some(existingImg => existingImg.data === img.src)) {
-                    const parentTextForImage = nextEl.textContent || '';
-                    const optionMatchInParent = parentTextForImage.match(optionRegex);
-
-                    if (optionMatchInParent && optionMatchInParent[1]) {
-                        const letter = optionMatchInParent[1].toUpperCase();
-                        currentQuestion.images.push({ data: img.src, in: `option${letter}` });
-                    } else {
-                        currentQuestion.images.push({ data: img.src, in: 'question' });
-                    }
-                }
-            });
-        }
-
-
-        // Process text content
         if (nextEl.tagName === 'P') {
-          const parts = nextText.split(/\s*(?=\([B-D]\))/i);
-          let containsOption = false;
-          
-          for (const part of parts) {
-              const optionMatch = part.match(optionRegex);
-              if (optionMatch && optionMatch[1]) {
-                  containsOption = true;
-                  const letter = optionMatch[1].toUpperCase();
-                  const optionText = part.replace(optionRegex, '').trim();
-                  currentQuestion.options[letter] = ((currentQuestion.options[letter] || '') + ' ' + optionText).trim();
-                  lastOptionLetter = letter;
-              } else if (part.trim() && lastOptionLetter) {
-                   currentQuestion.options[lastOptionLetter] += '\n' + part.trim();
-              }
-          };
-          
-          if(!containsOption && nextText) { // If it's not a new option but has text
-            if(lastOptionLetter) {
-                currentQuestion.options[lastOptionLetter] += '\n' + nextText;
-            } else {
-                currentQuestion.questionText += '\n' + nextText;
-            }
-          }
+          processParagraph(nextEl);
         }
         j++;
       }
@@ -132,7 +144,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
   return questions;
 };
-
 
 const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: string } => {
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
@@ -153,7 +164,7 @@ const formatTextForExcel = (text: string): string => {
     return text;
 };
 
-const generateExcelFromQuestions = async (questions: Question[], fileName: string) => {
+const generateExcelFromQuestions = async (questions: Question[]): Promise<Blob> => {
   if (questions.length === 0) {
     throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)').");
   }
@@ -295,42 +306,42 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  saveAs(blob, `${fileName.replace(/\.(docx|pdf)$/, '')}.xlsx`);
+  return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 };
 
 
-export const convertDocxToExcel = async (file: File) => {
+export const convertDocxToExcel = async (file: File): Promise<{ questions: Question[], excelBlob: Blob }> => {
   const arrayBuffer = await file.arrayBuffer();
 
   const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer }, {
-    transformDocument: mammoth.transforms.paragraph(p => {
-        p.children.forEach(run => {
-            if (run.type === 'run') {
-                if (run.isSuperscript) {
-                     run.children.forEach(text => {
-                        if (text.type === 'text' && text.value === '2') {
-                           text.value = '²';
-                        }
-                    });
-                }
-                run.children.forEach(text => {
-                    if (text.type === 'text') {
-                        text.value = text.value.replace(/°/g, ' deg');
-                    }
-                });
-            }
-        });
-        return p;
-    })
-  });
+      transformDocument: mammoth.transforms.paragraph(p => {
+          p.children.forEach(run => {
+              if (run.type === 'run') {
+                  if (run.isSuperscript) {
+                       run.children.forEach(text => {
+                          if (text.type === 'text' && text.value === '2') {
+                             text.value = '²';
+                          }
+                      });
+                  }
+                  run.children.forEach(text => {
+                      if (text.type === 'text') {
+                          text.value = text.value.replace(/°/g, ' deg');
+                      }
+                  });
+              }
+          });
+          return p;
+      })
+    });
   
   const questions = parseHtmlToQuestions(rawHtml);
-  await generateExcelFromQuestions(questions, file.name);
+  const excelBlob = await generateExcelFromQuestions(questions);
+  return { questions, excelBlob };
 };
 
 
-export const convertPdfToExcel = async (file: File) => {
+export const convertPdfToExcel = async (file: File): Promise<{ questions: Question[], excelBlob: Blob }> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
   
@@ -382,21 +393,27 @@ export const convertPdfToExcel = async (file: File) => {
     await Promise.all(imagePromises);
 
 
-    let pageText = textContent.items.map(item => ({
+    let pageItems: { str: string, y: number, x: number }[] = textContent.items.map(item => ({
         str: 'str' in item ? item.str : '',
-        y: 'transform' in item ? item.transform[5] : null
+        y: 'transform' in item ? item.transform[5] : 0,
+        x: 'transform' in item ? item.transform[4] : 0,
     }));
 
     Object.entries(imageYCoords).forEach(([imgData, y]) => {
-        pageText.push({str: `<img src="${imgData}" />`, y});
+        pageItems.push({str: `<img src="${imgData}" />`, y, x: 0});
     });
 
-    pageText.sort((a, b) => (b.y || 0) - (a.y || 0));
+    pageItems.sort((a, b) => {
+        if (Math.abs(b.y - a.y) < 5) {
+            return a.x - b.x;
+        }
+        return (b.y || 0) - (a.y || 0);
+    });
 
     let currentLine = '';
-    let lastY = pageText.length > 0 ? pageText[0].y : null;
+    let lastY = pageItems.length > 0 ? pageItems[0].y : null;
 
-    for (const item of pageText) {
+    for (const item of pageItems) {
         if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 5) { // Threshold for new line
             htmlContent += `<p>${currentLine.trim()}</p>`;
             currentLine = '';
@@ -409,5 +426,6 @@ export const convertPdfToExcel = async (file: File) => {
 
   const questions = parseHtmlToQuestions(htmlContent);
 
-  await generateExcelFromQuestions(questions, file.name);
+  const excelBlob = await generateExcelFromQuestions(questions);
+  return { questions, excelBlob };
 };
