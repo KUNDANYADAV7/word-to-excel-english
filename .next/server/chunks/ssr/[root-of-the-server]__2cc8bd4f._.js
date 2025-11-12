@@ -464,7 +464,7 @@ const getImageDimensions = (imgSrc)=>{
     });
 };
 const formatTextForExcel = (text)=>{
-    return text;
+    return text.replace(/∞/g, 'Infinity');
 };
 const generateExcel = async (questions)=>{
     if (questions.length === 0) {
@@ -561,7 +561,7 @@ const generateExcel = async (questions)=>{
                 context.font = "11pt Calibri";
                 const column = worksheet.getColumn(cell.col);
                 const columnWidthInChars = column.width || 20;
-                const availableWidth = columnWidthInChars * 7.5; // Approximation
+                const availableWidth = columnWidthInChars * 7.5;
                 let lineCount = 0;
                 lines.forEach((line)=>{
                     let currentLine = '';
@@ -576,7 +576,7 @@ const generateExcel = async (questions)=>{
                     }
                     lineCount++;
                 });
-                textHeightInPixels = lineCount * 20; // Approximate line height
+                textHeightInPixels = lineCount * 20;
             }
             let cumulativeImageHeight = 0;
             if (images.length > 0) {
@@ -632,7 +632,7 @@ const generateExcel = async (questions)=>{
             'C',
             'D'
         ].entries()){
-            const optionText = q.options[letter]; // Allow undefined
+            const optionText = q.options[letter];
             const optionImages = q.images.filter((img)=>img.in === `option${letter}`);
             if (optionText === undefined && optionImages.length === 0) continue;
             const cell = row.getCell(`alt${i + 1}`);

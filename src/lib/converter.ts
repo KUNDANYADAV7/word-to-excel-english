@@ -37,6 +37,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                 currentQuestion.options[key] = currentQuestion.options[key].replace(/\s+/g, ' ').trim();
             }
             questions.push(currentQuestion);
+            currentQuestion = null;
         }
     };
     
@@ -45,11 +46,11 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     for (const el of elements) {
         if (!(el instanceof HTMLElement)) continue;
 
-        const elHtml = el.innerHTML.trim();
         const textContent = (el.textContent || '').trim();
         const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]?\s*/i;
+        const isNewQuestion = questionStartRegex.test(textContent);
 
-        if (questionStartRegex.test(textContent)) {
+        if (isNewQuestion) {
             finalizeQuestion();
             currentQuestion = { questionText: '', options: {}, images: [] };
             currentState = 'question';
@@ -59,77 +60,64 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         if (!currentQuestion) continue;
 
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = elHtml;
-        const allNodes = Array.from(tempDiv.childNodes);
-        
-        let nodeTextContent = '';
-        allNodes.forEach(node => {
-            nodeTextContent += node.textContent || '';
-        });
-        nodeTextContent = nodeTextContent.trim();
-        
-        // Remove question number from the start of the text content
-        if (currentState === 'question') {
-            nodeTextContent = nodeTextContent.replace(questionStartRegex, '');
-        }
+        tempDiv.innerHTML = el.innerHTML;
+        const allChildNodes = Array.from(tempDiv.childNodes);
 
-        const optionMarkerRegex = /\(([A-Z])\)/g;
-        let lastIndex = 0;
-        let foundOptionInNode = false;
+        let accumulatedText = '';
 
-        const processText = (text: string) => {
-            if (!text) return;
-            if (currentState === 'option' && currentOptionKey) {
-                currentQuestion!.options[currentOptionKey] += ` ${text}`;
-            } else {
-                currentQuestion!.questionText += ` ${text}`;
+        const processNode = (node: ChildNode) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                accumulatedText += node.textContent || '';
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const elementNode = node as HTMLElement;
+                if (elementNode.tagName === 'IMG') {
+                    const target = currentState === 'option' && currentOptionKey ? `option${currentOptionKey}` : 'question';
+                    currentQuestion!.images.push({ data: (elementNode as HTMLImageElement).src, in: target });
+                } else {
+                     Array.from(elementNode.childNodes).forEach(processNode);
+                }
             }
         };
 
-        for (const node of allNodes) {
-             if (node.nodeType === Node.TEXT_NODE) {
-                const text = (node.textContent || '');
-                let lastIndex = 0;
-                const markers = [...text.matchAll(optionMarkerRegex)];
+        allChildNodes.forEach(processNode);
 
-                if (markers.length > 0) {
-                    foundOptionInNode = true;
-                    for (const marker of markers) {
-                        const textBefore = text.substring(lastIndex, marker.index).trim();
-                        processText(textBefore);
+        const fullText = accumulatedText.trim().replace(/\s+/g, ' ');
+        const optionMarkerRegex = /\(([A-Z])\)/g;
+        
+        let lastIndex = 0;
+        let match;
+        let hasFoundOption = false;
 
-                        currentState = 'option';
-                        currentOptionKey = marker[1];
-                        if (!currentQuestion.options[currentOptionKey]) {
-                            currentQuestion.options[currentOptionKey] = '';
-                        }
-                        lastIndex = marker.index! + marker[0].length;
-                    }
-                    const textAfter = text.substring(lastIndex).trim();
-                    processText(textAfter);
-                } else {
-                    processText(text);
-                }
-             } else if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'IMG') {
-                 const img = node as HTMLImageElement;
-
-                // Edge case: if an image is inside a paragraph that also contains an option marker,
-                // we need to determine if the image comes before or after the marker.
-                const markersInParent = [...(el.textContent || '').matchAll(optionMarkerRegex)];
-                if (markersInParent.length > 0) {
-                    // This is a rough approximation: if the image appears, and there are markers,
-                    // we check if we've already switched to an option state in this element.
-                    // If not, it belongs to the question. If yes, it belongs to the latest option.
-                } else if (currentOptionKey && currentState === 'option' && Object.keys(currentQuestion.options).includes(currentOptionKey)) {
-                     // If we are solidly in an option state from a previous element.
-                }
-
-                 const target = currentState === 'option' && currentOptionKey ? `option${currentOptionKey}` : 'question';
-                 currentQuestion.images.push({ data: img.src, in: target });
-                 if (currentState === 'option' && currentOptionKey && !currentQuestion.options[currentOptionKey]) {
-                    currentQuestion.options[currentOptionKey] = '';
+        const strippedText = isNewQuestion ? fullText.replace(questionStartRegex, '') : fullText;
+        let textSegments = strippedText.split(optionMarkerRegex);
+        
+        if(textSegments.length > 1) { // Options found
+             let textBeforeFirstOption = textSegments.shift()?.trim() || '';
+             if (textBeforeFirstOption) {
+                 if (currentState === 'option' && currentOptionKey) {
+                    currentQuestion.options[currentOptionKey] += ' ' + textBeforeFirstOption;
+                 } else {
+                    currentQuestion.questionText += ' ' + textBeforeFirstOption;
                  }
              }
+
+            for(let i = 0; i < textSegments.length; i+=2) {
+                const key = textSegments[i];
+                const value = textSegments[i+1]?.trim() || '';
+                
+                currentState = 'option';
+                currentOptionKey = key;
+                currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + value;
+            }
+
+        } else { // No options found in this element
+            if (strippedText) {
+                if (currentState === 'option' && currentOptionKey) {
+                    currentQuestion.options[currentOptionKey] += ' ' + strippedText;
+                } else {
+                    currentQuestion.questionText += ' ' + strippedText;
+                }
+            }
         }
     }
 
@@ -153,7 +141,7 @@ const getImageDimensions = (imgSrc: string): Promise<{ width: number; height: nu
 };
 
 const formatTextForExcel = (text: string): string => {
-    return text;
+    return text.replace(/∞/g, 'Infinity');
 };
 
 export const generateExcel = async (questions: Question[]): Promise<Blob> => {
@@ -211,7 +199,7 @@ export const generateExcel = async (questions: Question[]): Promise<Blob> => {
           context.font = "11pt Calibri";
           const column = worksheet.getColumn(cell.col);
           const columnWidthInChars = column.width || 20; 
-          const availableWidth = columnWidthInChars * 7.5; // Approximation
+          const availableWidth = columnWidthInChars * 7.5;
 
           let lineCount = 0;
           lines.forEach(line => {
@@ -227,7 +215,7 @@ export const generateExcel = async (questions: Question[]): Promise<Blob> => {
              }
              lineCount++;
           });
-          textHeightInPixels = lineCount * 20; // Approximate line height
+          textHeightInPixels = lineCount * 20;
         }
         
         let cumulativeImageHeight = 0;
@@ -275,7 +263,7 @@ export const generateExcel = async (questions: Question[]): Promise<Blob> => {
 
     let maxOptionHeight = 0;
     for (const [i, letter] of ['A', 'B', 'C', 'D'].entries()) {
-        const optionText = q.options[letter]; // Allow undefined
+        const optionText = q.options[letter];
         const optionImages = q.images.filter(img => img.in === `option${letter}`);
         if(optionText === undefined && optionImages.length === 0) continue;
 
@@ -381,11 +369,11 @@ export const parseFile = async (file: File): Promise<Question[]> => {
             }));
 
             images.forEach(img => {
-                pageItems.push({str: `<img src="${img.data}" />`, y: img.y, x: img.x});
+                pageItems.push({str: `<img src="${img!.data}" />`, y: img!.y, x: img!.x});
             });
             
             pageItems.sort((a, b) => {
-                if (Math.abs(b.y - a.y) < 5) { // Line height threshold
+                if (Math.abs(b.y - a.y) < 5) {
                     return a.x - b.x;
                 }
                 return b.y - a.y;
@@ -395,7 +383,7 @@ export const parseFile = async (file: File): Promise<Question[]> => {
             let lastY = pageItems.length > 0 ? pageItems[0].y : null;
 
             for (const item of pageItems) {
-                if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) { // New line threshold
+                if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) {
                     if (currentLine.trim()) combinedHtml += `<p>${currentLine.trim()}</p>`;
                     currentLine = '';
                 }
