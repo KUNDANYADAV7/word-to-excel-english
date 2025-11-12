@@ -263,14 +263,15 @@ export const convertDocxToExcel = async (file: File) => {
                   cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
                   currentImageOffset += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
 
-                  const colOffsetInPixels = 5;
+                  const column = worksheet.getColumn(cell.col);
+                  const cellWidthInPixels = column.width ? column.width * 7 : 100; // Approximate pixel width
+                  const colOffsetInPixels = (cellWidthInPixels - imageWidthInPixels) / 2;
                   
                   worksheet.addImage(imageId, {
                     tl: { col: cell.col - 1, row: cell.row - 1 },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
 
-                  // Safely access and modify the media object
                   const media = (worksheet as any).media;
                   if (media && media.length > 0) {
                     const lastImage = media[media.length - 1];
