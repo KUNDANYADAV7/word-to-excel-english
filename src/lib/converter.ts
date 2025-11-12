@@ -28,13 +28,12 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   const container = document.createElement('div');
   container.innerHTML = html;
 
-  const processContent = (element: HTMLElement): string => {
+  const processTextContent = (element: HTMLElement): string => {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = element.innerHTML;
     tempDiv.querySelectorAll('sup').forEach(sup => {
-      sup.textContent = '²';
+      if (sup.textContent === '2') sup.textContent = '²';
     });
-    // Remove image tags from text content
     tempDiv.querySelectorAll('img').forEach(img => img.remove());
     let text = tempDiv.textContent?.replace(/\s+/g, ' ').trim() || '';
     text = text.replace(/ deg/g, '°');
@@ -45,7 +44,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   let i = 0;
   while (i < children.length) {
     const el = children[i] as HTMLElement;
-    const text = processContent(el);
+    const text = processTextContent(el);
     const questionStartRegex = /^(?:Q|Question)?\s*\d+[.)]\s*/;
     
     if (el.tagName === 'P' && questionStartRegex.test(text)) {
@@ -55,72 +54,62 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         images: [],
       };
 
-      const questionImg = el.querySelector('img');
-      if (questionImg?.src) {
-        currentQuestion.images.push({ data: questionImg.src, in: 'question' });
-      }
+      // Process question images
+      el.querySelectorAll('img').forEach(img => {
+        if(img.src) currentQuestion.images.push({ data: img.src, in: 'question' });
+      });
 
       let j = i + 1;
       let lastOptionLetter: string | null = null;
 
       while (j < children.length) {
         const nextEl = children[j] as HTMLElement;
-        const nextText = processContent(nextEl);
+        const nextText = processTextContent(nextEl);
         
         if (nextEl.tagName === 'P' && questionStartRegex.test(nextText)) {
           break; 
         }
         
         const optionRegex = /\s*\(([A-D])\)\s*/i;
-        const isOptionLine = nextEl.tagName === 'P' && optionRegex.test(nextText);
 
-        const elImgs = nextEl.querySelectorAll('img');
-        elImgs.forEach(img => {
+        // Process images first and associate them correctly
+        nextEl.querySelectorAll('img').forEach(img => {
             if (img.src && !currentQuestion.images.some(existingImg => existingImg.data === img.src)) {
-                let imagePlacedInOption = false;
-                if (isOptionLine) {
-                    const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
-                    for(const opt of sameLineOptions) {
-                        const optionMatch = opt.match(optionRegex);
-                        if(optionMatch && optionMatch[1]) {
-                           const letter = optionMatch[1].toUpperCase();
-                           // Heuristic: if image is in a P tag that contains an option, associate it.
-                           currentQuestion.images.push({ data: img.src, in: `option${letter}` });
-                           imagePlacedInOption = true;
-                           break; // Assume one image per option line for simplicity
-                        }
-                    }
-                }
-                
-                if (!imagePlacedInOption) {
+                const parentText = nextEl.textContent || '';
+                const optionMatch = parentText.match(optionRegex);
+                if (optionMatch && optionMatch[1]) {
+                    const letter = optionMatch[1].toUpperCase();
+                    currentQuestion.images.push({ data: img.src, in: `option${letter}` });
+                } else {
                     currentQuestion.images.push({ data: img.src, in: 'question' });
                 }
             }
         });
 
-
-        if (isOptionLine) {
-          const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
-          for(const opt of sameLineOptions) {
-            const optionMatch = opt.match(optionRegex);
-            if(optionMatch && optionMatch[1]) {
-              const letter = optionMatch[1].toUpperCase();
-              currentQuestion.options[letter] = (currentQuestion.options[letter] || '') + opt.replace(optionRegex, '').trim();
-              lastOptionLetter = letter;
-            }
-          }
+        // Process text content
+        if (nextEl.tagName === 'P' && optionRegex.test(nextText)) {
+          const parts = nextText.split(/\s*(?=\([B-D]\))/i);
+          parts.forEach(part => {
+              const optionMatch = part.match(optionRegex);
+              if (optionMatch && optionMatch[1]) {
+                  const letter = optionMatch[1].toUpperCase();
+                  const optionText = part.replace(optionRegex, '').trim();
+                  currentQuestion.options[letter] = (currentQuestion.options[letter] || '') + optionText;
+                  lastOptionLetter = letter;
+              }
+          });
+        } else if (nextText && lastOptionLetter) {
+          // Append to the last identified option if it's not a new option line
+          currentQuestion.options[lastOptionLetter] += '\n' + nextText;
         } else if (nextText) {
-          if (lastOptionLetter) {
-            currentQuestion.options[lastOptionLetter] += '\n' + nextText;
-          } else {
-            currentQuestion.questionText += '\n' + nextText;
-          }
+          // Append to question text if it appears before any options
+          currentQuestion.questionText += '\n' + nextText;
         }
         
         j++;
       }
       
-      if (currentQuestion.questionText || Object.keys(currentQuestion.options).length > 0) {
+      if (currentQuestion.questionText || Object.keys(currentQuestion.options).length > 0 || currentQuestion.images.length > 0) {
         questions.push(currentQuestion);
       }
       
@@ -206,9 +195,12 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
           const context = canvas.getContext("2d");
           if(!context) return { totalHeight: 0 };
           context.font = "11pt Calibri";
+          const columnWidth = worksheet.getColumn(cell.col).width;
+          // approximate character width, this is a weak point.
+          const avgCharWidth = 7; 
+          const availableWidth = columnWidth ? columnWidth * avgCharWidth : 100 * avgCharWidth;
 
           lines.forEach(line => {
-             const availableWidth = (worksheet.getColumn(cell.col).width || 10) * 7;
              let currentLine = '';
              const words = line.split(' ');
              for(const word of words) {
@@ -216,7 +208,7 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
                   textHeightInPixels += 20; // Approximate line height
                   currentLine = word;
                 } else {
-                  currentLine += ' ' + word;
+                  currentLine += (currentLine ? ' ' : '') + word;
                 }
              }
              textHeightInPixels += 20;
