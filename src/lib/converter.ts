@@ -11,7 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.j
 
 type Question = {
   questionText: string;
-  options: string[];
+  options: { [key: string]: string };
   images: { data: string; in: 'question' | string }[];
 };
 
@@ -19,6 +19,7 @@ const PIXELS_TO_EMUS = 9525;
 const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75; 
 const POINTS_TO_PIXELS = 4 / 3;
 const IMAGE_MARGIN_PIXELS = 15;
+
 
 const parseHtmlToQuestions = (html: string): Question[] => {
   const questions: Question[] = [];
@@ -30,16 +31,10 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   const processContent = (element: HTMLElement): string => {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = element.innerHTML;
-    
-    // Replace superscript tags with the '²' character
     tempDiv.querySelectorAll('sup').forEach(sup => {
-      // A simple replacement for now, can be expanded if other superscripts are needed
       sup.textContent = '²';
     });
-    
-    // Get text content and clean it up
     let text = tempDiv.textContent?.replace(/\s+/g, ' ').trim() || '';
-    // Replace degree placeholder with the actual symbol
     text = text.replace(/ deg/g, '°');
     return text;
   };
@@ -48,68 +43,62 @@ const parseHtmlToQuestions = (html: string): Question[] => {
   let i = 0;
   while (i < children.length) {
     const el = children[i] as HTMLElement;
-    
     const text = processContent(el);
     const questionStartRegex = /^(?:Q|Question)?\s*\d+[.)]\s*/;
     
     if (el.tagName === 'P' && questionStartRegex.test(text)) {
-      const questionData: Question = {
+      const currentQuestion: Question = {
         questionText: text.replace(questionStartRegex, ''),
-        options: [],
+        options: {},
         images: [],
       };
 
       const questionImg = el.querySelector('img');
       if (questionImg?.src) {
-        questionData.images.push({ data: questionImg.src, in: 'question' });
+        currentQuestion.images.push({ data: questionImg.src, in: 'question' });
       }
 
       let j = i + 1;
-      let currentOptionLetter: string | null = null;
+      let lastOptionLetter: string | null = null;
 
       while (j < children.length) {
         const nextEl = children[j] as HTMLElement;
         const nextText = processContent(nextEl);
-        const optionRegex = /^\s*\(([A-D])\)\s*/i;
         
-        const nextElIsQuestion = nextEl.tagName === 'P' && questionStartRegex.test(nextText);
-
-        if (nextElIsQuestion) {
-          break; // Stop and process the next question
+        if (nextEl.tagName === 'P' && questionStartRegex.test(nextText)) {
+          break; 
         }
 
-        if (nextEl.tagName === 'P') {
-            if (optionRegex.test(nextText)) {
-              // This line can contain multiple options, e.g., (A) ... (B) ...
-              const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
-              for(const opt of sameLineOptions) {
-                const optionMatch = opt.match(optionRegex);
-                if(optionMatch && optionMatch[1]) {
-                  questionData.options.push(opt);
-                  currentOptionLetter = optionMatch[1].toUpperCase();
-                }
-              }
-            } else if (nextText) {
-                // This text belongs to the previous element (either question or an option)
-                if(questionData.options.length > 0) {
-                    const lastOptionIndex = questionData.options.length - 1;
-                    questionData.options[lastOptionIndex] += '\n' + nextText;
-                } else {
-                    questionData.questionText += '\n' + nextText;
-                }
+        const optionRegex = /\s*\(([A-D])\)\s*/i;
+        const parts = nextText.split(optionRegex).filter(p => p.trim() !== '');
+
+        let isOptionLine = false;
+        if(nextEl.tagName === 'P' && optionRegex.test(nextText)) {
+          isOptionLine = true;
+          const sameLineOptions = nextText.split(/\s*(?=\([B-D]\))/i);
+          for(const opt of sameLineLineOptions) {
+            const optionMatch = opt.match(optionRegex);
+            if(optionMatch && optionMatch[1]) {
+              const letter = optionMatch[1].toUpperCase();
+              currentQuestion.options[letter] = (currentQuestion.options[letter] || '') + opt.replace(optionRegex, '').trim();
+              lastOptionLetter = letter;
             }
+          }
+        } else if (nextText) {
+          if (lastOptionLetter) {
+            currentQuestion.options[lastOptionLetter] += '\n' + nextText;
+          } else {
+            currentQuestion.questionText += '\n' + nextText;
+          }
         }
         
-        // Process images within the current element
-        const nextElImgs = nextEl.querySelectorAll('img');
-        nextElImgs.forEach(img => {
-            if (img.src && !questionData.images.some(existingImg => existingImg.data === img.src)) {
-                 if (currentOptionLetter) {
-                    // Image is associated with the last found option
-                    questionData.images.push({ data: img.src, in: `option${currentOptionLetter}` });
+        const elImgs = nextEl.querySelectorAll('img');
+        elImgs.forEach(img => {
+            if (img.src && !currentQuestion.images.some(existingImg => existingImg.data === img.src)) {
+                 if (lastOptionLetter && isOptionLine) {
+                    currentQuestion.images.push({ data: img.src, in: `option${lastOptionLetter}` });
                 } else {
-                    // Image is part of the question itself
-                    questionData.images.push({ data: img.src, in: 'question' });
+                    currentQuestion.images.push({ data: img.src, in: 'question' });
                 }
             }
         });
@@ -117,14 +106,13 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         j++;
       }
       
-      // Only add the question if it has a question and at least one option
-      if (questionData.questionText && questionData.options.length > 0) {
-        questions.push(questionData);
+      if (currentQuestion.questionText && Object.keys(currentQuestion.options).length > 0) {
+        questions.push(currentQuestion);
       }
       
-      i = j; // Move the main index to where the inner loop stopped
+      i = j;
     } else {
-      i++; // Go to the next element
+      i++;
     }
   }
 
@@ -179,24 +167,13 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
   headerRow.height = 43.5;
 
   for (const [index, q] of questions.entries()) {
-    const cleanOption = (text: string) => text.replace(/^\s*\([A-D]\)\s*/i, '').trim();
-
-    const optionsMap: {[key: string]: string} = {};
-    q.options.forEach(opt => {
-        const match = opt.match(/^\s*\(([A-D])\)/i);
-        if(match && match[1]){
-            const letter = match[1].toUpperCase();
-            optionsMap[letter] = cleanOption(opt);
-        }
-    });
-
     const row = worksheet.addRow({
       sr: index + 1,
       question: formatTextForExcel(q.questionText),
-      alt1: formatTextForExcel(optionsMap['A'] || ''),
-      alt2: formatTextForExcel(optionsMap['B'] || ''),
-      alt3: formatTextForExcel(optionsMap['C'] || ''),
-      alt4: formatTextForExcel(optionsMap['D'] || ''),
+      alt1: formatTextForExcel(q.options['A'] || ''),
+      alt2: formatTextForExcel(q.options['B'] || ''),
+      alt3: formatTextForExcel(q.options['C'] || ''),
+      alt4: formatTextForExcel(q.options['D'] || ''),
     });
     
     row.eachCell({ includeEmpty: true }, cell => {
@@ -207,27 +184,32 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
 
     let maxRowHeightInPoints = 0;
     
-    const calculateCellHeight = async (cell: ExcelJS.Cell, text: string, images: {data: string, in: string}[]) => {
-        const formattedText = formatTextForExcel(text);
-        
+    const calculateCellHeightAndPlaceImages = async (cell: ExcelJS.Cell, text: string, images: {data: string, in: string}[]) => {
         let textHeightInPixels = 0;
-        if (formattedText) {
-          const lines = formattedText.split('\n');
+        if (text) {
+          const lines = text.split('\n');
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
-          if(!context) return { totalHeight: 0, textHeight: 0 };
+          if(!context) return { totalHeight: 0 };
           context.font = "11pt Calibri";
 
-          let totalHeight = 0;
           lines.forEach(line => {
-            const textMetrics = context.measureText(line);
-            totalHeight += textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent + 5;
+             const availableWidth = (worksheet.getColumn(cell.col).width || 10) * 7;
+             let currentLine = '';
+             const words = line.split(' ');
+             for(const word of words) {
+                if(context.measureText(currentLine + ' ' + word).width > availableWidth) {
+                  textHeightInPixels += 20; // Approximate line height
+                  currentLine = word;
+                } else {
+                  currentLine += ' ' + word;
+                }
+             }
+             textHeightInPixels += 20;
           });
-          textHeightInPixels = totalHeight;
         }
         
         let cumulativeImageHeight = 0;
-        let currentImageOffset = textHeightInPixels;
 
         if (images.length > 0) {
            for (const imgData of images) {
@@ -236,51 +218,46 @@ const generateExcelFromQuestions = async (questions: Question[], fileName: strin
                   const imageId = workbook.addImage({ base64: data, extension });
                   const imageDims = await getImageDimensions(imgData.data);
                   
-                  const imageWidthInPixels = 100;
+                  const imageWidthInPixels = 120;
                   const imageHeightInPixels = (imageDims.height / imageDims.width) * imageWidthInPixels;
                   
-                  // This is the crucial part: add a significant margin after text.
-                  const rowOffsetInPixels = currentImageOffset + (currentImageOffset > 0 ? IMAGE_MARGIN_PIXELS : 0);
-                  
+                  const rowOffsetInPixels = textHeightInPixels + cumulativeImageHeight + IMAGE_MARGIN_PIXELS;
                   cumulativeImageHeight += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
-                  currentImageOffset += imageHeightInPixels + IMAGE_MARGIN_PIXELS;
 
                   const column = worksheet.getColumn(cell.col);
-                  const cellWidthInPixels = column.width ? column.width * 7 : 100; // 7 is an approximation for pixel width of a character
-                  const colOffsetInPixels = (cellWidthInPixels - imageWidthInPixels) / 2;
+                  const cellWidthInPixels = column.width ? column.width * 7.5 : 100; // 7.5 is a better approximation
+                  const colOffsetInPixels = Math.max(0, (cellWidthInPixels - imageWidthInPixels) / 2);
                   
                   worksheet.addImage(imageId, {
                     tl: { col: cell.col - 1, row: cell.row - 1 },
                     ext: { width: imageWidthInPixels, height: imageHeightInPixels }
                   });
                   
-                   // Check if media exists before trying to access it
-                  if ((worksheet as any).media && (worksheet as any).media.length > 0) {
+                  if ((worksheet as any).media?.length > 0) {
                     const lastImage = (worksheet as any).media[(worksheet as any).media.length - 1];
                     if (lastImage && lastImage.range) {
                       lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
                       lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
                     }
                   }
-
               } catch (e) { console.error("Could not add image", e); }
            }
         }
         
         const totalCellHeightInPixels = textHeightInPixels + cumulativeImageHeight;
-        return { totalHeight: totalCellHeightInPixels / POINTS_TO_PIXELS, textHeight: textHeightInPixels / POINTS_TO_PIXELS };
+        return { totalHeight: totalCellHeightInPixels / POINTS_TO_PIXELS };
     };
     
     const questionImages = q.images.filter(img => img.in === 'question');
-    let { totalHeight: questionCellHeight } = await calculateCellHeight(row.getCell('question'), q.questionText, questionImages);
+    const { totalHeight: questionCellHeight } = await calculateCellHeightAndPlaceImages(row.getCell('question'), q.questionText, questionImages);
     maxRowHeightInPoints = Math.max(maxRowHeightInPoints, questionCellHeight);
 
     let maxOptionHeight = 0;
     for (const [i, letter] of ['A', 'B', 'C', 'D'].entries()) {
-        const optionText = optionsMap[letter] || '';
+        const optionText = q.options[letter] || '';
         const optionImages = q.images.filter(img => img.in === `option${letter}`);
         const cell = row.getCell(`alt${i+1}`);
-        const { totalHeight: optionCellHeight } = await calculateCellHeight(cell, optionText, optionImages);
+        const { totalHeight: optionCellHeight } = await calculateCellHeightAndPlaceImages(cell, optionText, optionImages);
         maxOptionHeight = Math.max(maxOptionHeight, optionCellHeight);
     }
     maxRowHeightInPoints = Math.max(maxRowHeightInPoints, maxOptionHeight);
@@ -309,19 +286,16 @@ export const convertDocxToExcel = async (file: File) => {
   const arrayBuffer = await file.arrayBuffer();
 
   const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer }, {
-    // A transform function to preserve special characters during conversion
     transformDocument: mammoth.transforms.paragraph(p => {
         p.children.forEach(run => {
             if (run.type === 'run') {
                 if (run.isSuperscript) {
-                     // Specifically handle '2' for cm² case
                      run.children.forEach(text => {
                         if (text.type === 'text' && text.value === '2') {
-                           text.value = '²'; // Replace with the actual superscript character
+                           text.value = '²';
                         }
                     });
                 }
-                // Convert degree placeholder to a real symbol that we'll handle later
                 run.children.forEach(text => {
                     if (text.type === 'text') {
                         text.value = text.value.replace(/°/g, ' deg');
@@ -351,7 +325,6 @@ export const convertPdfToExcel = async (file: File) => {
     }
 
     const questions: Question[] = [];
-    // Process lines more robustly
     const lines = fullText.split('\n').filter(line => line.trim().length > 0);
     let i = 0;
 
@@ -364,11 +337,10 @@ export const convertPdfToExcel = async (file: File) => {
             let questionText = line.replace(questionRegex, '').trim();
             const currentQuestion: Question = {
                 questionText: '',
-                options: [],
+                options: {},
                 images: [],
             };
             
-            // Collect multi-line question text
             let nextIndex = i + 1;
             while(nextIndex < lines.length && !lines[nextIndex].trim().match(questionRegex) && !lines[nextIndex].trim().match(/^\s*\([A-D]\)/i)) {
                 questionText += ' ' + lines[nextIndex].trim();
@@ -377,24 +349,26 @@ export const convertPdfToExcel = async (file: File) => {
             currentQuestion.questionText = questionText;
 
             i = nextIndex;
-
-            // Collect options
+            
+            let lastOptionLetter: string | null = null;
             while(i < lines.length && !lines[i].trim().match(questionRegex)) {
                 const optionLine = lines[i].trim();
                 const optionRegex = /^\s*\(([A-D]\))/i;
-                if (optionLine.match(optionRegex)) {
-                    currentQuestion.options.push(optionLine);
-                } else if (currentQuestion.options.length > 0) {
-                    // Append to the last option if it's a continuation
-                    currentQuestion.options[currentQuestion.options.length - 1] += ' ' + optionLine;
+                const optionMatch = optionLine.match(optionRegex);
+                if (optionMatch) {
+                    const letter = optionMatch[1].toUpperCase();
+                    const text = optionLine.replace(optionRegex, '').trim();
+                    currentQuestion.options[letter] = (currentQuestion.options[letter] || '') + text;
+                    lastOptionLetter = letter;
+                } else if (lastOptionLetter) {
+                    currentQuestion.options[lastOptionLetter] += ' ' + optionLine;
                 }
                 i++;
             }
             
-            if (currentQuestion.questionText && currentQuestion.options.length > 0) {
+            if (currentQuestion.questionText && Object.keys(currentQuestion.options).length > 0) {
                  questions.push(currentQuestion);
             }
-            // The loop will continue from the start of the next question
             continue;
         }
         i++;
