@@ -26,24 +26,20 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     container.innerHTML = html;
 
     const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]\s*/i;
-
     let currentQuestion: Question | null = null;
     let lastOptionLetter: string | null = null;
 
     const finalizeQuestion = () => {
         if (currentQuestion) {
-            // Trim all option texts
             Object.keys(currentQuestion.options).forEach(key => {
-                 if (currentQuestion!.options[key]) {
+                if (currentQuestion!.options[key]) {
                     currentQuestion!.options[key] = currentQuestion!.options[key].trim();
-                 }
+                }
             });
             questions.push(currentQuestion);
-            currentQuestion = null;
-            lastOptionLetter = null;
         }
     };
-
+    
     const paragraphs = Array.from(container.children);
 
     for (const p of paragraphs) {
@@ -51,98 +47,86 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         
         const pText = p.textContent?.trim() || '';
         const pImages = Array.from(p.querySelectorAll('img'));
-
-        // Check for the start of a new question
         const questionMatch = pText.match(questionStartRegex);
+
         if (questionMatch) {
-            finalizeQuestion(); // Finalize the previous question before starting a new one
-            
+            finalizeQuestion();
             currentQuestion = {
-                questionText: pText.replace(questionStartRegex, ''),
+                questionText: pText.replace(questionStartRegex, '').trim(),
                 options: {},
                 images: [],
             };
             lastOptionLetter = null;
 
-            // Associate any images in this paragraph with the question
             pImages.forEach(img => {
                 currentQuestion?.images.push({ data: img.src, in: 'question' });
             });
+        } else if (currentQuestion) {
+            const optionRegex = /\(([A-D])\)/gi;
+            const textParts = p.innerHTML.split(optionRegex);
+            
+            if (textParts.length > 1) { // Contains option markers
+                let currentText = textParts[0];
 
-            // If the question text also contains option markers, process them
-            const optionRegex = /\(([A-D])\)/ig;
-            const textAfterQuestion = pText.substring(questionMatch[0].length);
-            const optionMatches = [...textAfterQuestion.matchAll(optionRegex)];
+                // Anything before the first option marker belongs to the previous context
+                if (currentText.trim() || pImages.length > 0) {
+                     const tempDiv = document.createElement('div');
+                     tempDiv.innerHTML = currentText;
+                     const leadingText = tempDiv.textContent || '';
+                     const leadingImages = Array.from(tempDiv.querySelectorAll('img'));
 
-            if (optionMatches.length > 0) {
-                 let lastIndex = 0;
-                 optionMatches.forEach(match => {
-                     const letter = match[1].toUpperCase();
-                     const optionTextContent = textAfterQuestion.substring(lastIndex, match.index).replace(optionRegex, '').trim();
-
-                     if(lastOptionLetter && optionTextContent) {
-                        currentQuestion!.options[lastOptionLetter] = (currentQuestion!.options[lastOptionLetter] || '') + ' ' + optionTextContent;
+                     if (lastOptionLetter && leadingText.trim()) {
+                         currentQuestion.options[lastOptionLetter] += `\n${leadingText.trim()}`;
+                     } else if (!lastOptionLetter && leadingText.trim()) {
+                         currentQuestion.questionText += `\n${leadingText.trim()}`;
                      }
-                     
-                     lastOptionLetter = letter;
-                     currentQuestion!.options[letter] = '';
-                     lastIndex = (match.index || 0) + match[0].length;
-                 });
-
-                 const remainingText = textAfterQuestion.substring(lastIndex).trim();
-                 if (lastOptionLetter && remainingText) {
-                    currentQuestion!.options[lastOptionLetter] += ' ' + remainingText;
-                 }
-            }
-
-
-        } else if (currentQuestion) { // If we are inside a question
-            const optionRegex = /\(([A-D])\)/ig;
-            const optionMatches = [...pText.matchAll(optionRegex)];
-
-            if (optionMatches.length > 0) { // This paragraph contains option markers
-                let textSegment = pText;
-
-                optionMatches.forEach((match, i) => {
-                    const letter = match[1].toUpperCase();
-                    const nextMatchIndex = optionMatches[i+1] ? optionMatches[i+1].index : pText.length;
-                    
-                    const optionContent = pText.substring((match.index || 0) + match[0].length, nextMatchIndex).trim();
-                    
-                    currentQuestion!.options[letter] = (currentQuestion!.options[letter] || '') + optionContent;
-                    lastOptionLetter = letter;
-
-                    // If this paragraph has images, associate them with the first option found in this p
-                    if(pImages.length > 0) {
-                        pImages.forEach(img => {
-                             if (!currentQuestion?.images.some(existing => existing.data === img.src)) {
-                                currentQuestion?.images.push({ data: img.src, in: `option${letter}` });
-                             }
-                        });
-                        // Clear images after associating them
-                        pImages.length = 0;
-                    }
-                });
-
-            } else if (pImages.length > 0) { // Paragraph has images but no option markers
-                 pImages.forEach(img => {
-                    const association = lastOptionLetter ? `option${lastOptionLetter}` : 'question';
-                     if (!currentQuestion?.images.some(existing => existing.data === img.src)) {
-                         currentQuestion?.images.push({ data: img.src, in: association });
-                     }
-                 });
-            } else if (pText.length > 0) { // Paragraph has only text
-                if (lastOptionLetter) {
-                    currentQuestion.options[lastOptionLetter] = (currentQuestion.options[lastOptionLetter] || '') + '\n' + pText;
-                } else {
-                    // This text belongs to the question body if no options have started yet
-                    currentQuestion.questionText += '\n' + pText;
+                     leadingImages.forEach(img => {
+                         const context = lastOptionLetter ? `option${lastOptionLetter}` : 'question';
+                         currentQuestion?.images.push({ data: img.src, in: context });
+                     });
                 }
+                
+                // Process parts between option markers
+                for (let i = 1; i < textParts.length; i += 2) {
+                    const letter = textParts[i].toUpperCase();
+                    const contentHtml = textParts[i + 1] || '';
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = contentHtml;
+
+                    const optionText = tempDiv.textContent?.trim() || '';
+                    const optionImages = Array.from(tempDiv.querySelectorAll('img'));
+                    
+                    // Always create the option
+                    currentQuestion.options[letter] = (currentQuestion.options[letter] || '').trim();
+
+                    if(optionText){
+                       currentQuestion.options[letter] += (currentQuestion.options[letter] ? ' ' : '') + optionText;
+                    }
+                    
+                    optionImages.forEach(img => {
+                        currentQuestion?.images.push({ data: img.src, in: `option${letter}` });
+                    });
+                    
+                    lastOptionLetter = letter;
+                }
+
+            } else if (pText.length > 0 || pImages.length > 0) { // No option markers in this paragraph
+                const context = lastOptionLetter ? `option${lastOptionLetter}` : 'question';
+                if (pText.length > 0) {
+                    if (context.startsWith('option')) {
+                        currentQuestion.options[lastOptionLetter!] += `\n${pText}`;
+                    } else {
+                        currentQuestion.questionText += `\n${pText}`;
+                    }
+                }
+                pImages.forEach(img => {
+                    currentQuestion?.images.push({ data: img.src, in: context });
+                });
             }
         }
     }
 
-    finalizeQuestion(); // Finalize the last question
+    finalizeQuestion();
     return questions;
 };
 
@@ -317,6 +301,7 @@ export const convertDocxToExcel = async (file: File): Promise<{ questions: Quest
 
   const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer }, {
       transformDocument: mammoth.transforms.paragraph(p => {
+          // ensure each paragraph is processed
           return p;
       })
     });
