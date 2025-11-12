@@ -32,9 +32,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     tempDiv.innerHTML = element.innerHTML;
     
     tempDiv.querySelectorAll('sup').forEach(sup => {
-      if (sup.textContent?.trim() === '2') {
         sup.textContent = '²';
-      }
     });
     
     let text = tempDiv.textContent?.replace(/\s+/g, ' ').trim() || '';
@@ -306,7 +304,7 @@ export const convertDocxToExcel = async (file: File) => {
             if (run.type === 'run') {
                 if (run.isSuperscript) {
                      run.children.forEach(text => {
-                        if (text.type === 'text' && text.value === '2') {
+                        if (text.type === 'text') {
                            text.value = '²';
                         }
                     });
@@ -331,9 +329,7 @@ export const convertPdfToExcel = async (file: File) => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
     const numPages = pdf.numPages;
-    let questions: Question[] = [];
-
-    // Simple text-based parsing for PDFs
+    
     let fullText = '';
     for (let i = 1; i <= numPages; i++) {
         const page = await pdf.getPage(i);
@@ -341,33 +337,33 @@ export const convertPdfToExcel = async (file: File) => {
         fullText += textContent.items.map(item => ('str' in item ? item.str : '')).join(' ') + '\n';
     }
 
-    const questionRegex = /(?:Q|Question)?\s*(\d+)[.)]([\s\S]*?)(?=(?:Q|Question)?\s*\d+[.)]|\s*$)/g;
+    const questions: Question[] = [];
+    const questionRegex = /(?:Q|Question)?\s*(\d+[.)])([\s\S]*?)(?=(?:Q|Question)?\s*\d+[.)]|$)/g;
     let match;
-    while((match = questionRegex.exec(fullText)) !== null) {
-        const questionBlock = match[2];
-        const optionRegex = /\s*\(([A-D])\)\s*([\s\S]*?)(?=\s*\([A-D]\)|$)/gi;
-        
-        let questionText = questionBlock;
+
+    while ((match = questionRegex.exec(fullText)) !== null) {
+        let questionBlock = match[2];
+
         const options: string[] = [];
-        let optionMatch;
-        let firstOptionIndex = -1;
+        const optionRegex = /\s*(\([A-D]\))\s*([\s\S]*?)(?=\s*\([A-D]\)|$)/gi;
+        
+        let firstOptionIndex = questionBlock.search(/\s*\([A-D]\)/i);
+        
+        let questionText = (firstOptionIndex !== -1 ? questionBlock.substring(0, firstOptionIndex) : questionBlock).trim();
+        let optionsBlock = firstOptionIndex !== -1 ? questionBlock.substring(firstOptionIndex) : "";
 
-        while((optionMatch = optionRegex.exec(questionBlock)) !== null) {
-            if(firstOptionIndex === -1) {
-                firstOptionIndex = optionMatch.index;
+        if (optionsBlock) {
+             let optionMatch;
+             while((optionMatch = optionRegex.exec(optionsBlock)) !== null) {
+                options.push(`${optionMatch[1]} ${optionMatch[2].trim()}`);
             }
-            options.push(`(${optionMatch[1]}) ${optionMatch[2].trim()}`);
         }
         
-        if (firstOptionIndex !== -1) {
-            questionText = questionBlock.substring(0, firstOptionIndex).trim();
-        }
-
         if (questionText && options.length > 0) {
             questions.push({
                 questionText: questionText.replace(/\s+/g, ' ').trim(),
                 options: options,
-                images: [] // Image extraction from PDF is complex, skipping for now
+                images: [] // Image extraction from PDF is complex and not supported in this text-based approach
             });
         }
     }
