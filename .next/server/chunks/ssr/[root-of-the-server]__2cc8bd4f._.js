@@ -438,8 +438,6 @@ const parseHtmlToQuestions = (html)=>{
     "TURBOPACK unreachable";
     const container = undefined;
     let currentQuestion;
-    let currentState;
-    let currentOptionKey;
     const finalizeQuestion = undefined;
     const elements = undefined;
     const el = undefined;
