@@ -471,18 +471,18 @@ const cleanText = (text)=>{
     cleaned = cleaned.replace(/<sub>(.*?)<\/sub>/g, (match, content)=>{
         return content.split('').map((char)=>subscripts[char] || char).join('');
     });
-    return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
+    return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').replace(/×/g, 'x').trim();
 };
 const parseHtmlToQuestions = (html)=>{
     if ("TURBOPACK compile-time truthy", 1) return [];
     "TURBOPACK unreachable";
     const container = undefined;
     const questions = undefined;
+    // Regex to find the start of a question (e.g., "1.", "1)")
     const questionStartRegex = undefined;
-    let currentBlockElements;
-    let questionBlocks;
-    const allElements = undefined;
-    let i;
+    // Split the entire text content into blocks based on question numbers
+    const rawText = undefined;
+    const questionBlocks = undefined;
     const block = undefined;
 };
 const getImageDimensions = (imgSrc)=>{

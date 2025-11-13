@@ -397,7 +397,7 @@ const cleanText = (text)=>{
     cleaned = cleaned.replace(/<sub>(.*?)<\/sub>/g, (match, content)=>{
         return content.split('').map((char)=>subscripts[char] || char).join('');
     });
-    return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
+    return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').replace(/×/g, 'x').trim();
 };
 const parseHtmlToQuestions = (html)=>{
     if ("TURBOPACK compile-time falsy", 0) {
@@ -405,65 +405,53 @@ const parseHtmlToQuestions = (html)=>{
     }
     const container = document.createElement('div');
     container.innerHTML = html;
+    // Add newlines to preserve formatting from the Word doc
+    container.querySelectorAll('p, li').forEach((el)=>{
+        el.appendChild(document.createTextNode('\n'));
+    });
     const questions = [];
+    // Regex to find the start of a question (e.g., "1.", "1)")
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
-    let currentBlockElements = [];
-    let questionBlocks = [];
-    const allElements = Array.from(container.children);
-    for(let i = 0; i < allElements.length; i++){
-        const el = allElements[i];
-        const elText = el.textContent?.trim() || '';
-        if (questionStartRegex.test(elText)) {
-            if (currentBlockElements.length > 0) {
-                questionBlocks.push({
-                    elements: currentBlockElements
-                });
-            }
-            currentBlockElements = [
-                el
-            ];
-        } else {
-            currentBlockElements.push(el);
-        }
-    }
-    if (currentBlockElements.length > 0) {
-        questionBlocks.push({
-            elements: currentBlockElements
-        });
-    }
+    // Split the entire text content into blocks based on question numbers
+    const rawText = container.textContent || '';
+    const questionBlocks = rawText.split(/(?=\s*\d+\s*[.)])/).filter((block)=>block.trim());
     for (const block of questionBlocks){
-        const tempDiv = document.createElement('div');
-        block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
-        tempDiv.querySelectorAll('p, li').forEach((el)=>{
-            el.appendChild(document.createTextNode('\n'));
-        });
-        let fullText = (tempDiv.textContent || '').trim();
-        const qMatch = fullText.match(questionStartRegex);
+        let currentText = block.trim();
+        const qMatch = currentText.match(questionStartRegex);
         if (!qMatch) continue;
-        let questionText = '';
+        // Remove the question number to isolate the question text and options
+        currentText = currentText.substring(qMatch[0].length).trim();
         const options = {};
-        const images = [];
-        tempDiv.querySelectorAll('img').forEach((img)=>{
-            images.push({
-                data: img.src,
-                in: 'question'
-            });
-        });
-        const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
-        let parts = fullText.replace(qMatch[0], '').trim().split(optionMarkerRegex);
-        questionText = cleanText(parts.shift()?.trim() || '');
-        let remainingText = parts.join('');
-        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/gs;
-        let match;
-        const textWithSentinel = remainingText + '_END_OF_TEXT_';
-        while((match = optionExtractor.exec(textWithSentinel)) !== null){
-            const key = match[1].toUpperCase();
-            const value = match[2].trim();
-            if (value) {
-                options[key] = cleanText(value);
+        const images = []; // Images not handled in this simplified version
+        // A more robust regex to find option markers (A), A. etc.
+        // It looks for the marker at the beginning of a line or after some space.
+        const optionMarkerRegex = /(?:^|\s+|\n)\s*[(]?([A-D])[).]/;
+        // Find the position of the first option
+        const firstOptionMatch = currentText.match(optionMarkerRegex);
+        let questionText = '';
+        let optionsText = '';
+        if (firstOptionMatch && firstOptionMatch.index !== undefined) {
+            // Everything before the first option is the question
+            questionText = cleanText(currentText.substring(0, firstOptionMatch.index));
+            // Everything from the first option onwards is the options block
+            optionsText = currentText.substring(firstOptionMatch.index);
+        } else {
+            // No options found, the whole block is the question
+            questionText = cleanText(currentText);
+        }
+        if (optionsText) {
+            // Split the options block into individual option parts
+            const optionParts = optionsText.split(/(?=\s*[(]?[A-D][).])/).filter((part)=>part.trim());
+            for (const part of optionParts){
+                const optionMatch = part.trim().match(/^[(]?([A-D])[).]/);
+                if (optionMatch) {
+                    const key = optionMatch[1].toUpperCase();
+                    const value = part.trim().substring(optionMatch[0].length).trim();
+                    options[key] = cleanText(value);
+                }
             }
         }
-        if (questionText || Object.keys(options).length > 0 || images.length > 0) {
+        if (questionText || Object.keys(options).length > 0) {
             questions.push({
                 questionText,
                 options,
