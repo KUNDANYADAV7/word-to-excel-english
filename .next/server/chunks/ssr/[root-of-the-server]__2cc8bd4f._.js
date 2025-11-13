@@ -437,7 +437,6 @@ const parseHtmlToQuestions = (html)=>{
     if ("TURBOPACK compile-time truthy", 1) return questions;
     "TURBOPACK unreachable";
     const container = undefined;
-    // Pre-process HTML to handle superscripts and subscripts correctly
     let processedHtml;
     let currentQuestion;
     let lastOptionKey;
@@ -469,7 +468,7 @@ const formatTextForExcel = (text)=>{
 };
 const generateExcel = async (questions)=>{
     if (questions.length === 0) {
-        throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)').");
+        throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)' or 'A.').");
     }
     const workbook = new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$exceljs$2f$excel$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Workbook"]();
     const worksheet = workbook.addWorksheet('Questions');
@@ -610,7 +609,7 @@ const generateExcel = async (questions)=>{
                             const lastImage = worksheet.media[worksheet.media.length - 1];
                             if (lastImage && lastImage.range) {
                                 lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                                lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_to_EMUS;
+                                lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
                             }
                         }
                     } catch (e) {
@@ -766,7 +765,7 @@ const parseFile = async (file)=>{
                 if (Math.abs(b.y - a.y) < 5) {
                     return a.x - b.x;
                 }
-                return b.y - a.y;
+                return b.y - a.y; // Sort by vertical position (top to bottom)
             });
             let currentLine = '';
             let lastY = pageItems.length > 0 ? pageItems[0].y : null;

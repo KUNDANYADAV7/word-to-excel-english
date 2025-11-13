@@ -25,9 +25,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     const container = document.createElement('div');
     
-    // Pre-process HTML to handle superscripts and subscripts correctly
     let processedHtml = html.replace(/<sup>(.*?)<\/sup>/g, (match, content) => {
-        const superscripts: { [key: string]: string } = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+': '⁺', '-': '⁻' };
+        const superscripts: { [key: string]: string } = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+': '⁺', '-': '⁻', '(': '⁽', ')': '⁾' };
         return content.split('').map((char: string) => superscripts[char] || char).join('');
     }).replace(/<sub>(.*?)<\/sub>/g, (match, content) => {
         const subscripts: { [key: string]: string } = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉', '+': '₊', '-': '₋' };
@@ -55,23 +54,19 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         let content = el.innerHTML.trim();
         const textContent = el.textContent?.trim() || '';
 
-        // Regex to find question number at the start of a paragraph
         const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]?\s*/i;
         const isNewQuestion = questionStartRegex.test(textContent);
 
         if (isNewQuestion) {
             finalizeQuestion();
             const questionNumberMatch = textContent.match(questionStartRegex);
-            const questionText = questionNumberMatch ? textContent.substring(questionNumberMatch[0].length).trim() : textContent;
             
             currentQuestion = { questionText: '', options: {}, images: [] };
             lastOptionKey = null;
 
-            // Use a temporary div to process the innerHTML
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
             
-            // Remove the question number part from the content
             const qNumNode = tempDiv.firstChild;
             if (qNumNode && qNumNode.textContent) {
                 qNumNode.textContent = qNumNode.textContent.replace(questionStartRegex, '');
@@ -81,7 +76,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         
         if (!currentQuestion) continue;
 
-        // Process the content of the element (can contain text and images)
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = content;
 
@@ -89,8 +83,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
              if (node.nodeType === Node.TEXT_NODE) {
                 let text = node.textContent || '';
                 
-                // Regex to find option markers like (A), (B), etc.
-                const optionMarkerRegex = /\(([A-Z])\)/g;
+                const optionMarkerRegex = /(?:\(|^)([A-Z])[.)]\s/g;
                 let match;
                 let lastIndex = 0;
 
@@ -128,7 +121,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     finalizeQuestion();
 
-    // Final cleanup pass
     return questions.map(q => {
         q.questionText = q.questionText.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
         for (const key in q.options) {
@@ -160,7 +152,7 @@ const formatTextForExcel = (text: string): string => {
 
 export const generateExcel = async (questions: Question[]): Promise<Blob> => {
   if (questions.length === 0) {
-    throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)').");
+    throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)' or 'A.').");
   }
 
   const workbook = new ExcelJS.Workbook();
@@ -260,7 +252,7 @@ export const generateExcel = async (questions: Question[]): Promise<Blob> => {
                     const lastImage = (worksheet as any).media[(worksheet as any).media.length - 1];
                     if (lastImage && lastImage.range) {
                       lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                      lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_to_EMUS;
+                      lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
                     }
                   }
               } catch (e) { console.error("Could not add image", e); }
@@ -322,7 +314,7 @@ export const parseFile = async (file: File): Promise<Question[]> => {
             const viewport = page.getViewport({ scale: 1.5 });
             const ops = await page.getOperatorList();
             
-            const imagePromises: Promise<{ data: string, y: number, x: number }>[] = [];
+            const imagePromises: Promise<{ data: string, y: number, x: number } | null>[] = [];
 
             for (let i = 0; i < ops.fnArray.length; i++) {
                 if (ops.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
@@ -371,10 +363,10 @@ export const parseFile = async (file: File): Promise<Question[]> => {
                         console.error("Error processing PDF image", e);
                         return null;
                     });
-                    if (promise) imagePromises.push(promise as Promise<{ data: string, y: number, x: number }>);
+                    if (promise) imagePromises.push(promise);
                 }
             }
-            const images = (await Promise.all(imagePromises)).filter(img => img !== null);
+            const images = (await Promise.all(imagePromises)).filter((img): img is { data: string; y: number; x: number; } => img !== null);
 
             let pageItems: { str: string, y: number, x: number }[] = textContent.items.map(item => ({
                 str: 'str' in item ? item.str : '',
@@ -383,14 +375,14 @@ export const parseFile = async (file: File): Promise<Question[]> => {
             }));
 
             images.forEach(img => {
-                pageItems.push({str: `<img src="${img!.data}" />`, y: img!.y, x: img!.x});
+                pageItems.push({str: `<img src="${img.data}" />`, y: img.y, x: img.x});
             });
             
             pageItems.sort((a, b) => {
-                if (Math.abs(b.y - a.y) < 5) {
+                if (Math.abs(b.y - a.y) < 5) { // Threshold to consider items on the same line
                     return a.x - b.x;
                 }
-                return b.y - a.y;
+                return b.y - a.y; // Sort by vertical position (top to bottom)
             });
             
             let currentLine = '';
@@ -413,5 +405,3 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
-
-    

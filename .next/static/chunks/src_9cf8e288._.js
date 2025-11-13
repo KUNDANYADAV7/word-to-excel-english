@@ -364,7 +364,6 @@ const parseHtmlToQuestions = (html)=>{
         "TURBOPACK unreachable";
     }
     const container = document.createElement('div');
-    // Pre-process HTML to handle superscripts and subscripts correctly
     let processedHtml = html.replace(/<sup>(.*?)<\/sup>/g, (match, content)=>{
         const superscripts = {
             '0': '⁰',
@@ -378,7 +377,9 @@ const parseHtmlToQuestions = (html)=>{
             '8': '⁸',
             '9': '⁹',
             '+': '⁺',
-            '-': '⁻'
+            '-': '⁻',
+            '(': '⁽',
+            ')': '⁾'
         };
         return content.split('').map((char)=>superscripts[char] || char).join('');
     }).replace(/<sub>(.*?)<\/sub>/g, (match, content)=>{
@@ -413,23 +414,19 @@ const parseHtmlToQuestions = (html)=>{
         if (!(el instanceof HTMLElement)) continue;
         let content = el.innerHTML.trim();
         const textContent = el.textContent?.trim() || '';
-        // Regex to find question number at the start of a paragraph
         const questionStartRegex = /^(?:Q|Question)?\s*(\d+)[.)]?\s*/i;
         const isNewQuestion = questionStartRegex.test(textContent);
         if (isNewQuestion) {
             finalizeQuestion();
             const questionNumberMatch = textContent.match(questionStartRegex);
-            const questionText = questionNumberMatch ? textContent.substring(questionNumberMatch[0].length).trim() : textContent;
             currentQuestion = {
                 questionText: '',
                 options: {},
                 images: []
             };
             lastOptionKey = null;
-            // Use a temporary div to process the innerHTML
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
-            // Remove the question number part from the content
             const qNumNode = tempDiv.firstChild;
             if (qNumNode && qNumNode.textContent) {
                 qNumNode.textContent = qNumNode.textContent.replace(questionStartRegex, '');
@@ -437,14 +434,12 @@ const parseHtmlToQuestions = (html)=>{
             content = tempDiv.innerHTML;
         }
         if (!currentQuestion) continue;
-        // Process the content of the element (can contain text and images)
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = content;
         Array.from(tempDiv.childNodes).forEach((node)=>{
             if (node.nodeType === Node.TEXT_NODE) {
                 let text = node.textContent || '';
-                // Regex to find option markers like (A), (B), etc.
-                const optionMarkerRegex = /\(([A-Z])\)/g;
+                const optionMarkerRegex = /(?:\(|^)([A-Z])[.)]\s/g;
                 let match;
                 let lastIndex = 0;
                 while((match = optionMarkerRegex.exec(text)) !== null){
@@ -479,7 +474,6 @@ const parseHtmlToQuestions = (html)=>{
         });
     }
     finalizeQuestion();
-    // Final cleanup pass
     return questions.map((q)=>{
         q.questionText = q.questionText.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
         for(const key in q.options){
@@ -512,7 +506,7 @@ const formatTextForExcel = (text)=>{
 };
 const generateExcel = async (questions)=>{
     if (questions.length === 0) {
-        throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)').");
+        throw new Error("No questions found. Check document format. Questions should be numbered (e.g., '1.') and options labeled (e.g., '(A)' or 'A.').");
     }
     const workbook = new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$exceljs$2f$dist$2f$exceljs$2e$min$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Workbook"]();
     const worksheet = workbook.addWorksheet('Questions');
@@ -653,7 +647,7 @@ const generateExcel = async (questions)=>{
                             const lastImage = worksheet.media[worksheet.media.length - 1];
                             if (lastImage && lastImage.range) {
                                 lastImage.range.tl.rowOff = rowOffsetInPixels * PIXELS_TO_EMUS;
-                                lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_to_EMUS;
+                                lastImage.range.tl.colOff = colOffsetInPixels * PIXELS_TO_EMUS;
                             }
                         }
                     } catch (e) {
@@ -809,7 +803,7 @@ const parseFile = async (file)=>{
                 if (Math.abs(b.y - a.y) < 5) {
                     return a.x - b.x;
                 }
-                return b.y - a.y;
+                return b.y - a.y; // Sort by vertical position (top to bottom)
             });
             let currentLine = '';
             let lastY = pageItems.length > 0 ? pageItems[0].y : null;
