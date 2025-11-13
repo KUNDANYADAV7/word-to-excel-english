@@ -41,53 +41,41 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     const container = document.createElement('div');
     container.innerHTML = html;
 
-    // Add newlines to preserve formatting from the Word doc
     container.querySelectorAll('p, li').forEach(el => {
-        el.appendChild(document.createTextNode('\n'));
+        const br = document.createElement('br');
+        if (el.nextSibling) {
+            el.parentNode?.insertBefore(br, el.nextSibling);
+        } else {
+            el.parentNode?.appendChild(br);
+        }
     });
-
-    const questions: Question[] = [];
-    // Regex to find the start of a question (e.g., "1.", "1)")
-    const questionStartRegex = /^\s*(\d+)\s*[.)]/;
     
-    // Split the entire text content into blocks based on question numbers
-    const rawText = container.textContent || '';
-    const questionBlocks = rawText.split(/(?=\s*\d+\s*[.)])/).filter(block => block.trim());
+    const rawTextWithNewlines = container.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rawTextWithNewlines;
+    const rawText = tempDiv.textContent || '';
+    
+    const questions: Question[] = [];
+    const questionBlocks = rawText.split(/(?=\n\s*\d+\s*[.)])/).filter(block => block.trim());
 
     for (const block of questionBlocks) {
         let currentText = block.trim();
 
-        const qMatch = currentText.match(questionStartRegex);
+        const qMatch = currentText.match(/^\s*(\d+)\s*[.)]/);
         if (!qMatch) continue;
 
-        // Remove the question number to isolate the question text and options
         currentText = currentText.substring(qMatch[0].length).trim();
 
         const options: { [key:string]: string } = {};
-        const images: Question['images'] = []; // Images not handled in this simplified version
-        
-        // A more robust regex to find option markers (A), A. etc.
-        // It looks for the marker at the beginning of a line or after some space.
-        const optionMarkerRegex = /(?:^|\s+|\n)\s*[(]?([A-D])[).]/;
-        
-        // Find the position of the first option
-        const firstOptionMatch = currentText.match(optionMarkerRegex);
-        
-        let questionText = '';
-        let optionsText = '';
+        const images: Question['images'] = []; // Images not handled in this version
 
-        if (firstOptionMatch && firstOptionMatch.index !== undefined) {
-            // Everything before the first option is the question
-            questionText = cleanText(currentText.substring(0, firstOptionMatch.index));
-            // Everything from the first option onwards is the options block
-            optionsText = currentText.substring(firstOptionMatch.index);
-        } else {
-            // No options found, the whole block is the question
-            questionText = cleanText(currentText);
-        }
+        const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
+        const parts = currentText.split(optionMarkerRegex);
+        
+        let questionText = cleanText(parts[0]);
 
-        if (optionsText) {
-            // Split the options block into individual option parts
+        if (parts.length > 1) {
+            const optionsText = currentText.substring(parts[0].length);
             const optionParts = optionsText.split(/(?=\s*[(]?[A-D][).])/).filter(part => part.trim());
 
             for (const part of optionParts) {
@@ -389,3 +377,4 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
 
     
+

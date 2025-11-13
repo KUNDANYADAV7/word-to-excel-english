@@ -477,11 +477,10 @@ const parseHtmlToQuestions = (html)=>{
     if ("TURBOPACK compile-time truthy", 1) return [];
     "TURBOPACK unreachable";
     const container = undefined;
-    const questions = undefined;
-    // Regex to find the start of a question (e.g., "1.", "1)")
-    const questionStartRegex = undefined;
-    // Split the entire text content into blocks based on question numbers
+    const rawTextWithNewlines = undefined;
+    const tempDiv = undefined;
     const rawText = undefined;
+    const questions = undefined;
     const questionBlocks = undefined;
     const block = undefined;
 };
