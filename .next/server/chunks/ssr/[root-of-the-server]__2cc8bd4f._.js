@@ -439,6 +439,7 @@ const parseHtmlToQuestions = (html)=>{
     const container = undefined;
     let processedHtml;
     let currentQuestion;
+    let lastOptionKey;
     const finalizeQuestion = undefined;
     const elements = undefined;
     const el = undefined;
