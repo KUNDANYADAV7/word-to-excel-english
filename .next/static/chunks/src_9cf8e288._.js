@@ -407,7 +407,7 @@ const parseHtmlToQuestions = (html)=>{
     container.innerHTML = html;
     const questions = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
-    const optionMarkerRegex = /(?:^|\s|\b)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/;
+    const optionMarkerRegex = /(?:\s|\b|^)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/;
     const combinedOptionRegex = new RegExp(optionMarkerRegex.source, 'g');
     let currentBlockElements = [];
     let potentialQuestionBlocks = [];
@@ -436,8 +436,7 @@ const parseHtmlToQuestions = (html)=>{
     for (const block of potentialQuestionBlocks){
         const tempDiv = document.createElement('div');
         block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
-        let fullText = tempDiv.innerText || '';
-        fullText = fullText.replace(/(\r\n|\n|\r)/gm, " \n "); // Preserve line breaks for splitting
+        let fullText = (tempDiv.innerText || '').replace(/(\r\n|\n|\r)/gm, " \n ").trim();
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
         let questionText = '';
@@ -449,20 +448,14 @@ const parseHtmlToQuestions = (html)=>{
                 in: 'question'
             }); // Default to question
         });
-        // Split text into lines to handle vertical and horizontal options
-        const lines = fullText.split('\n').map((line)=>line.trim()).filter((line)=>line);
-        let questionLines = [];
-        let optionLines = [];
-        let foundOptions = false;
-        let lineText = lines.join(' ').replace(qMatch[0], '').trim();
-        const firstOptionMatch = lineText.match(/(?:\s|\b)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/);
-        if (firstOptionMatch && firstOptionMatch.index !== undefined) {
-            questionText = lineText.substring(0, firstOptionMatch.index).trim();
-            let optionsStr = lineText.substring(firstOptionMatch.index).trim();
-            const optionSplitRegex = /(?=(?:\s|\b)[A-D][.)]|\((?:^|\s|\b)[A-D]\))/g;
-            const optionParts = optionsStr.split(optionSplitRegex).filter((p)=>p.trim());
+        let remainingText = fullText.replace(qMatch[0], '').trim();
+        const optionSplitRegex = /(?=(?:\s|\b)[A-D][.)]|\((?:^|\s|\b)[A-D]\))/;
+        const parts = remainingText.split(optionSplitRegex);
+        if (parts.length > 1) {
+            questionText = parts[0];
+            const optionParts = parts.slice(1);
             for (const part of optionParts){
-                const keyMatch = part.match(optionMarkerRegex);
+                const keyMatch = part.trim().match(optionMarkerRegex);
                 if (keyMatch) {
                     const key = (keyMatch[1] || keyMatch[2]).toUpperCase();
                     const content = part.replace(keyMatch[0], '').trim();
@@ -470,9 +463,9 @@ const parseHtmlToQuestions = (html)=>{
                 }
             }
         } else {
-            questionText = lineText;
+            questionText = remainingText;
         }
-        questionText = cleanText(questionText.replace(/^\d+\s*[.)]/, ''));
+        questionText = cleanText(questionText);
         if (questionText || Object.keys(options).length > 0 || images.length > 0) {
             questions.push({
                 questionText,
