@@ -41,8 +41,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     const container = document.createElement('div');
     container.innerHTML = html;
     
-    // The splitting logic relies on the question number starting on a new line.
-    // We'll ensure block-level elements like <p> and <li> create newlines.
     container.querySelectorAll('p, li').forEach(el => {
         const br = document.createElement('br');
         if (el.nextSibling) {
@@ -58,42 +56,76 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     const rawText = tempDiv.textContent || '';
     
     const questions: Question[] = [];
-    // Split by question number (e.g., "1.", "2)", " 87. ")
     const questionBlocks = rawText.split(/(?=\n\s*\d+\s*[.)])/).filter(block => block.trim());
+
+    const optionMarkerRegex = /(^\s*[(]?[A-D][).])/;
 
     for (const block of questionBlocks) {
         let currentText = block.trim();
 
-        // Remove the leading question number
         const qMatch = currentText.match(/^\s*(\d+)\s*[.)]/);
         if (!qMatch) continue;
         currentText = currentText.substring(qMatch[0].length).trim();
-
-        const options: { [key:string]: string } = {};
-        const images: Question['images'] = []; // Images not handled in this version
-
-        // This regex is crucial. It looks for an option marker like (A) or A.
-        // The positive lookahead `(?=...)` splits the string *before* the marker, keeping the marker.
-        const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
-        const parts = currentText.split(optionMarkerRegex);
         
-        let questionText = cleanText(parts[0]);
+        const lines = currentText.split('\n').filter(line => line.trim() !== '');
+        
+        let questionText = '';
+        let options: { [key: string]: string } = {};
+        const images: Question['images'] = []; // Images not handled
 
-        if (parts.length > 1) {
-            const optionsText = currentText.substring(parts[0].length);
-            // Split again to get individual options
-            const optionParts = optionsText.split(/(?=\s*[(]?[A-D][).])/).filter(part => part.trim());
-
-            for (const part of optionParts) {
-                const optionMatch = part.trim().match(/^[(]?([A-D])[).]/);
-                if (optionMatch) {
-                    const key = optionMatch[1].toUpperCase();
-                    const value = part.trim().substring(optionMatch[0].length).trim();
-                    options[key] = cleanText(value);
-                }
+        let firstOptionIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (optionMarkerRegex.test(lines[i])) {
+                firstOptionIndex = i;
+                break;
             }
         }
         
+        if (firstOptionIndex === -1) {
+            // No options found, might be embedded in the question line
+            const embeddedOptionRegex = /\s*[(]?[A-D][).]/;
+            const splitPoint = currentText.search(embeddedOptionRegex);
+            if (splitPoint !== -1) {
+                questionText = cleanText(currentText.substring(0, splitPoint));
+                const optionsString = currentText.substring(splitPoint);
+                const optionParts = optionsString.split(/(?=\s*[(]?[A-D][).])/).filter(part => part.trim());
+                for (const part of optionParts) {
+                    const optionMatch = part.trim().match(/^[(]?([A-D])[).]/);
+                    if (optionMatch) {
+                        const key = optionMatch[1].toUpperCase();
+                        const value = part.trim().substring(optionMatch[0].length).trim();
+                        options[key] = cleanText(value);
+                    }
+                }
+            } else {
+                questionText = cleanText(currentText);
+            }
+        } else {
+            questionText = cleanText(lines.slice(0, firstOptionIndex).join('\n'));
+            const optionLines = lines.slice(firstOptionIndex);
+            
+            let currentOptionKey: string | null = null;
+            let currentOptionValue = '';
+
+            for (const line of optionLines) {
+                const trimmedLine = line.trim();
+                const optionMatch = trimmedLine.match(optionMarkerRegex);
+
+                if (optionMatch) {
+                    if (currentOptionKey) {
+                        options[currentOptionKey] = cleanText(currentOptionValue);
+                    }
+                    currentOptionKey = optionMatch[1].replace(/[().\s]/g, '').toUpperCase();
+                    currentOptionValue = trimmedLine.substring(optionMatch[0].length).trim();
+                } else if (currentOptionKey) {
+                    currentOptionValue += ' ' + trimmedLine;
+                }
+            }
+            if (currentOptionKey) {
+                options[currentOptionKey] = cleanText(currentOptionValue);
+            }
+        }
+
         if (questionText || Object.keys(options).length > 0) {
             questions.push({ questionText, options, images });
         }
@@ -394,3 +426,5 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     return parseHtmlToQuestions(htmlContent);
 };
 
+
+    

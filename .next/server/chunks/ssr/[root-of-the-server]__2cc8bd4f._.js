@@ -481,8 +481,8 @@ const parseHtmlToQuestions = (html)=>{
     const tempDiv = undefined;
     const rawText = undefined;
     const questions = undefined;
-    // Split by question number (e.g., "1.", "2)", " 87. ")
     const questionBlocks = undefined;
+    const optionMarkerRegex = undefined;
     const block = undefined;
 };
 const getImageDimensions = (imgSrc)=>{
