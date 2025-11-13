@@ -421,7 +421,9 @@ const parseHtmlToQuestions = (html)=>{
         if (isNewQuestion) {
             finalizeQuestion();
             const questionNumberMatch = textContent.match(questionStartRegex);
-            textContent = textContent.substring(questionNumberMatch[0].length).trim();
+            if (questionNumberMatch) {
+                textContent = textContent.substring(questionNumberMatch[0].length).trim();
+            }
             currentQuestion = {
                 questionText: '',
                 options: {},
@@ -436,20 +438,23 @@ const parseHtmlToQuestions = (html)=>{
                 for(let i = 0; i < optionMatches.length; i++){
                     const match = optionMatches[i];
                     const keyMatch = match[0].match(/[A-Z]/);
-                    const key = keyMatch ? keyMatch[0] : null;
-                    if (!key) continue;
+                    if (!keyMatch) continue;
+                    const key = keyMatch[0];
                     const start = match.index + match[0].length;
                     const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
-                    currentQuestion.options[key] = optionText;
+                    if (optionText) {
+                        currentQuestion.options[key] = optionText;
+                    }
                     lastOptionKey = key;
                 }
             } else {
                 const match = textContent.match(optionMarkerRegex);
                 if (match) {
                     currentQuestion.questionText = textContent.substring(0, match.index).trim();
-                    const key = (match[1] || match[2] || '').trim();
-                    if (key) {
+                    const keyMatch = match[0].match(/[A-Z]/);
+                    if (keyMatch) {
+                        const key = keyMatch[0];
                         const optionText = textContent.substring(match.index + match[0].length).trim();
                         currentQuestion.options[key] = optionText;
                         lastOptionKey = key;
@@ -462,8 +467,9 @@ const parseHtmlToQuestions = (html)=>{
         } else if (currentQuestion) {
             const match = textContent.match(optionMarkerRegex);
             if (match && match.index === 0) {
-                const optionLetter = (match[1] || match[2] || '').trim();
-                if (optionLetter) {
+                const optionLetterMatch = match[0].match(/[A-Z]/);
+                if (optionLetterMatch) {
+                    const optionLetter = optionLetterMatch[0];
                     lastOptionKey = optionLetter;
                     const optionText = textContent.substring(match[0].length).trim();
                     currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
