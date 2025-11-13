@@ -474,19 +474,20 @@ const cleanText = (text)=>{
     return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
 };
 const parseHtmlToQuestions = (html)=>{
-    const questions = [];
-    if ("TURBOPACK compile-time truthy", 1) return questions;
+    if ("TURBOPACK compile-time truthy", 1) return [];
     "TURBOPACK unreachable";
     const container = undefined;
-    const elements = undefined;
+    const questions = undefined;
     let currentQuestion;
-    let accumulatingLines;
+    let questionLines;
+    let optionLines;
     const questionStartRegex = undefined;
-    // Stricter regex to only match single-letter options, not acronyms like (ACC)
+    // Stricter regex to match single-letter options, not general acronyms
     const optionMarkerRegex = undefined;
     const singleLineOptionRegex = undefined;
     const finalizeQuestion = undefined;
-    let i;
+    const elements = undefined;
+    const el = undefined;
 };
 const getBase64Image = (imgSrc)=>{
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
