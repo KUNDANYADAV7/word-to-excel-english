@@ -54,8 +54,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    const optionMarkerRegex = /^\s*((?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)]))/;
-    const multiOptionLineRegex = /(\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/g;
+    const optionMarkerRegex = /^\s*(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
+    const multiOptionLineRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
 
     for (const el of elements) {
         if (!(el instanceof HTMLElement)) continue;
@@ -82,9 +82,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                     const currentMatch = optionMatches[i];
                     const nextMatch = optionMatches[i + 1];
                     
-                    const keyMatch = currentMatch[0].match(/[A-Z]/);
-                    if (!keyMatch) continue;
-                    const key = keyMatch[0];
+                    const key = (currentMatch[1] || currentMatch[2])?.trim();
+                    if (!key) continue;
 
                     const start = currentMatch.index! + currentMatch[0].length;
                     const end = nextMatch ? nextMatch.index : textContent.length;
@@ -97,9 +96,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                 const match = textContent.match(optionMarkerRegex);
                 if (match) {
                     currentQuestion.questionText = textContent.substring(0, match.index).trim();
-                    const keyMatch = match[0].match(/[A-Z]/);
-                    if (keyMatch) {
-                      const key = keyMatch[0];
+                    const key = (match[1] || match[2])?.trim();
+                    if (key) {
                       const optionText = textContent.substring(match.index! + match[0].length).trim();
                       currentQuestion.options[key] = optionText;
                       lastOptionKey = key;
@@ -112,9 +110,8 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         } else if (currentQuestion) {
             const match = textContent.match(optionMarkerRegex);
             if (match) { // This line is a new option (vertical layout)
-                const keyMatch = match[0].match(/[A-Z]/);
-                if(keyMatch) {
-                    const key = keyMatch[0];
+                const key = (match[1] || match[2])?.trim();
+                if(key) {
                     const optionText = textContent.substring(match[0].length).trim();
                     currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + optionText;
                     lastOptionKey = key;
