@@ -406,19 +406,18 @@ const parseHtmlToQuestions = (html)=>{
     const container = document.createElement('div');
     container.innerHTML = html;
     const questions = [];
-    let questionBlocks = [];
-    let currentBlock = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
-    // First pass: Group elements into blocks based on question numbers
+    const optionMarkerRegex = /(?:\s|^|\b)([A-D])[.)]\s|(?:\s|^|\b)\(([A-D])\)\s/;
+    let blocks = [];
+    let currentBlock = [];
+    // Group elements into blocks based on question numbers
     for (const el of Array.from(container.children)){
         const elText = el.textContent?.trim() || '';
-        if (questionStartRegex.test(elText)) {
-            if (currentBlock.length > 0) {
-                questionBlocks.push({
-                    elements: currentBlock,
-                    text: currentBlock.map((e)=>e.textContent?.trim()).join(' ')
-                });
-            }
+        if (questionStartRegex.test(elText) && currentBlock.length > 0) {
+            blocks.push({
+                elements: currentBlock,
+                text: currentBlock.map((e)=>e.textContent?.trim() || '').join(' ')
+            });
             currentBlock = [
                 el
             ];
@@ -427,75 +426,114 @@ const parseHtmlToQuestions = (html)=>{
         }
     }
     if (currentBlock.length > 0) {
-        questionBlocks.push({
+        blocks.push({
             elements: currentBlock,
-            text: currentBlock.map((e)=>e.textContent?.trim()).join(' ')
+            text: currentBlock.map((e)=>e.textContent?.trim() || '').join(' ')
         });
     }
-    // Second pass: Process each block
-    for (const block of questionBlocks){
-        let fullText = cleanText(block.text);
-        if (!fullText) continue;
-        const questionNumberMatch = fullText.match(questionStartRegex);
-        if (!questionNumberMatch) continue;
-        let question = {
-            questionText: '',
-            options: {},
-            images: []
-        };
-        // Handle images for the entire block
-        const tempDiv = document.createElement('div');
-        block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
-        tempDiv.querySelectorAll('img').forEach((img)=>{
-            question.images.push({
-                data: img.src,
-                in: 'question'
-            }); // Default to question
-        });
-        // Regex to find start of options (A, B, C, or D)
-        const optionSplitRegex = /(?=(?:\s|^|\b)(?:[A-D]\.|(?:\([A-D]\)))\s)/g;
-        const textWithoutNumber = fullText.substring(questionNumberMatch[0].length).trim();
-        const parts = textWithoutNumber.split(optionSplitRegex);
-        question.questionText = cleanText(parts[0]);
-        const optionContentRegex = /^(?:([A-D])\.|(?:\(([A-D])\)))\s(.*)/s;
-        for(let i = 1; i < parts.length; i++){
-            const part = parts[i].trim();
-            const match = part.match(optionContentRegex);
-            if (match) {
-                const key = (match[1] || match[2]).toUpperCase();
-                const content = cleanText(match[3]);
-                if (question.options[key] === undefined) {
-                    question.options[key] = content;
-                }
+    // If the first block does not start with a question number, it might be a preamble.
+    // Let's check the subsequent blocks.
+    if (blocks.length > 1 && !questionStartRegex.test(blocks[0].text)) {
+        blocks[1].elements = [
+            ...blocks[0].elements,
+            ...blocks[1].elements
+        ];
+        blocks[1].text = blocks[0].text + " " + blocks[1].text;
+        blocks.shift();
+    }
+    // Process each block to find questions
+    let currentQuestionElements = [];
+    let currentQuestionNumberText = '';
+    for (const block of blocks){
+        const blockText = block.text;
+        const qNumMatch = blockText.match(questionStartRegex);
+        if (qNumMatch) {
+            // Finalize previous question
+            if (currentQuestionElements.length > 0) {
+                const qText = currentQuestionNumberText + " " + currentQuestionElements.map((e)=>e.textContent || '').join('\n');
+                questions.push(processQuestionBlock(qText, currentQuestionElements));
             }
-        }
-        // Re-assign images to options if they are found within an option's text
-        tempDiv.querySelectorAll('p, div, span').forEach((el)=>{
-            const elText = el.textContent || '';
-            const elImgs = Array.from(el.querySelectorAll('img'));
-            if (elImgs.length === 0) return;
-            for (const key of [
-                'D',
-                'C',
-                'B',
-                'A'
-            ]){
-                if (question.options[key] && elText.includes(question.options[key])) {
-                    elImgs.forEach((img)=>{
-                        const imgIndex = question.images.findIndex((i)=>i.data === img.src && i.in === 'question');
-                        if (imgIndex !== -1) {
-                            question.images[imgIndex].in = `option${key}`;
-                        }
-                    });
-                    break;
-                }
-            }
-        });
-        if (question.questionText || Object.keys(question.options).length > 0 || question.images.length > 0) {
-            questions.push(question);
+            // Start new question
+            currentQuestionNumberText = qNumMatch[0];
+            const remainingElements = block.elements;
+            const tempDiv = document.createElement('div');
+            remainingElements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
+            let blockHtml = tempDiv.innerHTML;
+            blockHtml = blockHtml.replace(currentQuestionNumberText, '').trim();
+            const newDiv = document.createElement('div');
+            newDiv.innerHTML = blockHtml;
+            currentQuestionElements = Array.from(newDiv.children);
+        } else {
+            currentQuestionElements.push(...block.elements);
         }
     }
-    return questions;
+    // Add the last question
+    if (currentQuestionElements.length > 0) {
+        const qText = currentQuestionNumberText + " " + currentQuestionElements.map((e)=>e.textContent || '').join('\n');
+        questions.push(processQuestionBlock(qText, currentQuestionElements));
+    }
+    return questions.filter((q)=>q.questionText || Object.keys(q.options).length > 0 || q.images.length > 0);
+};
+const processQuestionBlock = (fullText, elements)=>{
+    let question = {
+        questionText: '',
+        options: {},
+        images: []
+    };
+    // Handle images for the entire block
+    const tempDiv = document.createElement('div');
+    elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
+    tempDiv.querySelectorAll('img').forEach((img)=>{
+        question.images.push({
+            data: img.src,
+            in: 'question'
+        }); // Default to question
+    });
+    fullText = cleanText(fullText.replace(/^\s*\d+\s*[.)]/, ''));
+    const optionSplitRegex = /(?=(?:\s|^|\b)(?:[A-D][.)]|\([A-D]\))\s)/g;
+    const parts = fullText.split(optionSplitRegex);
+    question.questionText = cleanText(parts[0]);
+    for(let i = 1; i < parts.length; i++){
+        let optionText = parts[i].trim();
+        const optionKeyMatch = optionText.match(/^([A-D])[.)]|\(([A-D])\)/);
+        if (optionKeyMatch) {
+            const key = (optionKeyMatch[1] || optionKeyMatch[2]).toUpperCase();
+            let content = optionText.substring(optionKeyMatch[0].length).trim();
+            // Check if this content contains other options
+            const subOptions = content.split(optionSplitRegex);
+            if (subOptions.length > 1) {
+                question.options[key] = cleanText(subOptions[0]);
+                for(let j = 1; j < subOptions.length; j++){
+                    parts.splice(i + j, 0, subOptions[j]);
+                }
+            } else {
+                question.options[key] = cleanText(content);
+            }
+        }
+    }
+    // Re-assign images to options if they are found within an option's text
+    tempDiv.querySelectorAll('p, div, span').forEach((el)=>{
+        const elText = el.textContent || '';
+        const elImgs = Array.from(el.querySelectorAll('img'));
+        if (elImgs.length === 0) return;
+        for (const key of [
+            'D',
+            'C',
+            'B',
+            'A'
+        ]){
+            if (question.options[key] && elText.includes(question.options[key])) {
+                elImgs.forEach((img)=>{
+                    const imgIndex = question.images.findIndex((i)=>i.data === img.src && i.in === 'question');
+                    if (imgIndex !== -1) {
+                        question.images[imgIndex].in = `option${key}`;
+                    }
+                });
+                break;
+            }
+        }
+    });
+    return question;
 };
 const getBase64Image = (imgSrc)=>{
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';

@@ -478,11 +478,76 @@ const parseHtmlToQuestions = (html)=>{
     "TURBOPACK unreachable";
     const container = undefined;
     const questions = undefined;
-    let questionBlocks;
-    let currentBlock;
     const questionStartRegex = undefined;
+    const optionMarkerRegex = undefined;
+    let blocks;
+    let currentBlock;
     const el = undefined;
+    // Process each block to find questions
+    let currentQuestionElements;
+    let currentQuestionNumberText;
     const block = undefined;
+};
+const processQuestionBlock = (fullText, elements)=>{
+    let question = {
+        questionText: '',
+        options: {},
+        images: []
+    };
+    // Handle images for the entire block
+    const tempDiv = document.createElement('div');
+    elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
+    tempDiv.querySelectorAll('img').forEach((img)=>{
+        question.images.push({
+            data: img.src,
+            in: 'question'
+        }); // Default to question
+    });
+    fullText = cleanText(fullText.replace(/^\s*\d+\s*[.)]/, ''));
+    const optionSplitRegex = /(?=(?:\s|^|\b)(?:[A-D][.)]|\([A-D]\))\s)/g;
+    const parts = fullText.split(optionSplitRegex);
+    question.questionText = cleanText(parts[0]);
+    for(let i = 1; i < parts.length; i++){
+        let optionText = parts[i].trim();
+        const optionKeyMatch = optionText.match(/^([A-D])[.)]|\(([A-D])\)/);
+        if (optionKeyMatch) {
+            const key = (optionKeyMatch[1] || optionKeyMatch[2]).toUpperCase();
+            let content = optionText.substring(optionKeyMatch[0].length).trim();
+            // Check if this content contains other options
+            const subOptions = content.split(optionSplitRegex);
+            if (subOptions.length > 1) {
+                question.options[key] = cleanText(subOptions[0]);
+                for(let j = 1; j < subOptions.length; j++){
+                    parts.splice(i + j, 0, subOptions[j]);
+                }
+            } else {
+                question.options[key] = cleanText(content);
+            }
+        }
+    }
+    // Re-assign images to options if they are found within an option's text
+    tempDiv.querySelectorAll('p, div, span').forEach((el)=>{
+        const elText = el.textContent || '';
+        const elImgs = Array.from(el.querySelectorAll('img'));
+        if (elImgs.length === 0) return;
+        for (const key of [
+            'D',
+            'C',
+            'B',
+            'A'
+        ]){
+            if (question.options[key] && elText.includes(question.options[key])) {
+                elImgs.forEach((img)=>{
+                    const imgIndex = question.images.findIndex((i)=>i.data === img.src && i.in === 'question');
+                    if (imgIndex !== -1) {
+                        question.images[imgIndex].in = `option${key}`;
+                    }
+                });
+                break;
+            }
+        }
+    });
+    return question;
 };
 const getBase64Image = (imgSrc)=>{
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
