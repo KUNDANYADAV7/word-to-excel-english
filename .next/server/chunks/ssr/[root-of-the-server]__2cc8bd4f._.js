@@ -481,11 +481,10 @@ const parseHtmlToQuestions = (html)=>{
     const elements = undefined;
     let currentQuestion;
     let accumulatingLines;
-    let isInsideQuestion;
     const questionStartRegex = undefined;
-    // Stricter option regex to avoid matching things like (ACC)
+    // Stricter regex to only match single-letter options, not acronyms like (ACC)
     const optionMarkerRegex = undefined;
-    const horizontalOptionsRegex = undefined;
+    const singleLineOptionRegex = undefined;
     const finalizeQuestion = undefined;
     let i;
 };
