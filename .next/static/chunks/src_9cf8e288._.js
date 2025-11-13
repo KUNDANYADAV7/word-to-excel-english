@@ -416,7 +416,10 @@ const parseHtmlToQuestions = (html)=>{
     };
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    const optionMarkerRegex = /^\s*((?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)]))/;
+    // Regex to find any potential option marker.
+    // It looks for (A), A), A., B), B., etc.
+    const genericOptionMarkerRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
+    // Regex to find multiple option markers on a single line.
     const multiOptionLineRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
@@ -425,54 +428,55 @@ const parseHtmlToQuestions = (html)=>{
         if (isNewQuestion) {
             finalizeQuestion();
             const questionNumberMatch = textContent.match(questionStartRegex);
-            if (questionNumberMatch) {
-                textContent = textContent.substring(questionNumberMatch[0].length).trim();
-            }
+            const questionTextAfterNumber = questionNumberMatch ? textContent.substring(questionNumberMatch[0].length).trim() : textContent;
             currentQuestion = {
                 questionText: '',
                 options: {},
                 images: []
             };
             const optionMatches = [
-                ...textContent.matchAll(multiOptionLineRegex)
+                ...questionTextAfterNumber.matchAll(multiOptionLineRegex)
             ];
-            if (optionMatches.length > 1 && (optionMatches[0].index ?? 0) > 0) {
-                currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
+            if (optionMatches.length > 1) {
+                const firstOptionIndex = optionMatches[0].index ?? 0;
+                currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
                 for(let i = 0; i < optionMatches.length; i++){
                     const currentMatch = optionMatches[i];
                     const nextMatch = optionMatches[i + 1];
                     const key = (currentMatch[1] || currentMatch[2])?.trim();
                     if (!key) continue;
                     const start = currentMatch.index + currentMatch[0].length;
-                    const end = nextMatch ? nextMatch.index : textContent.length;
-                    const optionText = textContent.substring(start, end).trim();
+                    const end = nextMatch ? nextMatch.index : questionTextAfterNumber.length;
+                    const optionText = questionTextAfterNumber.substring(start, end).trim();
                     currentQuestion.options[key] = optionText;
                 }
                 lastOptionKey = null;
             } else {
-                const match = textContent.match(optionMarkerRegex);
-                if (match) {
-                    currentQuestion.questionText = textContent.substring(0, match.index).trim();
-                    const keyText = match[1]?.replace(/[\(\).]/g, '').trim();
+                const firstOptionMatch = questionTextAfterNumber.match(genericOptionMarkerRegex);
+                if (firstOptionMatch) {
+                    const splitIndex = firstOptionMatch.index ?? 0;
+                    currentQuestion.questionText = questionTextAfterNumber.substring(0, splitIndex).trim();
+                    const restOfText = questionTextAfterNumber.substring(splitIndex);
+                    const keyText = (firstOptionMatch[1] || firstOptionMatch[2])?.replace(/[\(\).]/g, '').trim();
                     if (keyText) {
-                        const optionText = textContent.substring(match.index + match[0].length).trim();
+                        const optionText = restOfText.substring(firstOptionMatch[0].length).trim();
                         currentQuestion.options[keyText] = optionText;
                         lastOptionKey = keyText;
                     } else {
-                        currentQuestion.questionText += ' ' + textContent;
+                        currentQuestion.questionText += ' ' + restOfText;
                         lastOptionKey = null;
                     }
                 } else {
-                    currentQuestion.questionText = textContent;
+                    currentQuestion.questionText = questionTextAfterNumber;
                     lastOptionKey = null;
                 }
             }
         } else if (currentQuestion) {
-            const match = textContent.match(optionMarkerRegex);
-            if (match) {
-                const keyText = match[1]?.replace(/[\(\).]/g, '').trim();
+            const optionMatch = textContent.match(genericOptionMarkerRegex);
+            if (optionMatch && optionMatch.index === 0) {
+                const keyText = (optionMatch[1] || optionMatch[2])?.replace(/[\(\).]/g, '').trim();
                 if (keyText) {
-                    const optionText = textContent.substring(match[0].length).trim();
+                    const optionText = textContent.substring(optionMatch[0].length).trim();
                     currentQuestion.options[keyText] = (currentQuestion.options[keyText] || '') + ' ' + optionText;
                     lastOptionKey = keyText;
                 }

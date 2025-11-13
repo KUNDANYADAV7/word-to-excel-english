@@ -54,7 +54,11 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    const optionMarkerRegex = /^\s*((?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)]))/;
+    
+    // Regex to find any potential option marker.
+    // It looks for (A), A), A., B), B., etc.
+    const genericOptionMarkerRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
+    // Regex to find multiple option markers on a single line.
     const multiOptionLineRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
 
     for (const el of elements) {
@@ -67,17 +71,16 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             finalizeQuestion();
             
             const questionNumberMatch = textContent.match(questionStartRegex);
-            if(questionNumberMatch) {
-              textContent = textContent.substring(questionNumberMatch[0].length).trim();
-            }
+            const questionTextAfterNumber = questionNumberMatch ? textContent.substring(questionNumberMatch[0].length).trim() : textContent;
 
             currentQuestion = { questionText: '', options: {}, images: [] };
             
-            const optionMatches = [...textContent.matchAll(multiOptionLineRegex)];
+            const optionMatches = [...questionTextAfterNumber.matchAll(multiOptionLineRegex)];
             
-            if (optionMatches.length > 1 && (optionMatches[0].index ?? 0) > 0) { // Horizontal options
-                currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
-                
+            if (optionMatches.length > 1) { // Horizontal options detected
+                const firstOptionIndex = optionMatches[0].index ?? 0;
+                currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
+
                 for (let i = 0; i < optionMatches.length; i++) {
                     const currentMatch = optionMatches[i];
                     const nextMatch = optionMatches[i + 1];
@@ -86,36 +89,42 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                     if (!key) continue;
 
                     const start = currentMatch.index! + currentMatch[0].length;
-                    const end = nextMatch ? nextMatch.index : textContent.length;
+                    const end = nextMatch ? nextMatch.index : questionTextAfterNumber.length;
                     
-                    const optionText = textContent.substring(start, end).trim();
+                    const optionText = questionTextAfterNumber.substring(start, end).trim();
                     currentQuestion.options[key] = optionText;
                 }
                 lastOptionKey = null;
+
             } else { // Vertical options or just question text
-                const match = textContent.match(optionMarkerRegex);
-                if (match) {
-                    currentQuestion.questionText = textContent.substring(0, match.index).trim();
-                    const keyText = match[1]?.replace(/[\(\).]/g, '').trim();
+                const firstOptionMatch = questionTextAfterNumber.match(genericOptionMarkerRegex);
+                if (firstOptionMatch) {
+                    const splitIndex = firstOptionMatch.index ?? 0;
+                    currentQuestion.questionText = questionTextAfterNumber.substring(0, splitIndex).trim();
+                    const restOfText = questionTextAfterNumber.substring(splitIndex);
+
+                    const keyText = (firstOptionMatch[1] || firstOptionMatch[2])?.replace(/[\(\).]/g, '').trim();
+
                     if (keyText) {
-                      const optionText = textContent.substring(match.index! + match[0].length).trim();
+                      const optionText = restOfText.substring(firstOptionMatch[0].length).trim();
                       currentQuestion.options[keyText] = optionText;
                       lastOptionKey = keyText;
-                    } else {
-                       currentQuestion.questionText += ' ' + textContent;
+                    } else { // Should not happen with the new regex, but as a fallback
+                       currentQuestion.questionText += ' ' + restOfText;
                        lastOptionKey = null;
                     }
                 } else {
-                    currentQuestion.questionText = textContent;
+                    currentQuestion.questionText = questionTextAfterNumber;
                     lastOptionKey = null;
                 }
             }
-        } else if (currentQuestion) {
-            const match = textContent.match(optionMarkerRegex);
-            if (match) { // This line is a new option (vertical layout)
-                const keyText = match[1]?.replace(/[\(\).]/g, '').trim();
+
+        } else if (currentQuestion) { // Continuation of a previous question/option
+            const optionMatch = textContent.match(genericOptionMarkerRegex);
+            if (optionMatch && optionMatch.index === 0) { // This line starts with an option marker
+                const keyText = (optionMatch[1] || optionMatch[2])?.replace(/[\(\).]/g, '').trim();
                 if(keyText) {
-                    const optionText = textContent.substring(match[0].length).trim();
+                    const optionText = textContent.substring(optionMatch[0].length).trim();
                     currentQuestion.options[keyText] = (currentQuestion.options[keyText] || '') + ' ' + optionText;
                     lastOptionKey = keyText;
                 }
@@ -427,9 +436,3 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
-
-    
-
-    
-
-    
