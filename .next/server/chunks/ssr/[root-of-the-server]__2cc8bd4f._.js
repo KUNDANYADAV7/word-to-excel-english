@@ -443,9 +443,8 @@ const parseHtmlToQuestions = (html)=>{
     const finalizeQuestion = undefined;
     const elements = undefined;
     const questionStartRegex = undefined;
-    // Stricter regex: (A) or A. or A) -- but not (ACC)
-    const singleOptionMarkerRegex = undefined;
-    const multiOptionLineRegex = undefined;
+    const optionMarkerRegex = undefined;
+    const globalOptionMarkerRegex = undefined;
     const el = undefined;
 };
 const getBase64Image = (imgSrc)=>{
