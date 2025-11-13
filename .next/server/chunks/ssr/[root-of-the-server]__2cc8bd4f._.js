@@ -481,7 +481,6 @@ const parseHtmlToQuestions = (html)=>{
     const questionStartRegex = undefined;
     let currentBlockElements;
     let questionBlocks;
-    // Group elements into blocks based on question numbers
     const allElements = undefined;
     let i;
     const block = undefined;

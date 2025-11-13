@@ -46,40 +46,32 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     
     let currentBlockElements: Element[] = [];
     let questionBlocks: { elements: Element[] }[] = [];
-
-    // Group elements into blocks based on question numbers
     const allElements = Array.from(container.children);
+
+    // Group elements into blocks, starting a new block for each question number.
     for (let i = 0; i < allElements.length; i++) {
         const el = allElements[i];
         const elText = el.textContent?.trim() || '';
 
-        // If it's a question number, start a new block
         if (questionStartRegex.test(elText)) {
             if (currentBlockElements.length > 0) {
                 questionBlocks.push({ elements: currentBlockElements });
             }
             currentBlockElements = [el];
         } else {
-            // If it's the last element, add it to the current block and push the block
-            if (i === allElements.length - 1) {
-                currentBlockElements.push(el);
-                questionBlocks.push({ elements: currentBlockElements });
-            } else {
-                currentBlockElements.push(el);
-            }
+            currentBlockElements.push(el);
         }
     }
-     if (currentBlockElements.length > 0 && (questionBlocks.length === 0 || questionBlocks[questionBlocks.length-1].elements !== currentBlockElements) ) {
+    if (currentBlockElements.length > 0) {
         questionBlocks.push({ elements: currentBlockElements });
     }
-
 
     // Process each block
     for (const block of questionBlocks) {
         const tempDiv = document.createElement('div');
         block.elements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
         
-        let fullText = (tempDiv.innerText || '').replace(/(\r\n|\n|\r)/gm, " ").trim();
+        let fullText = (tempDiv.textContent || '').replace(/(\r\n|\n|\r)/gm, " ").trim();
 
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
@@ -91,34 +83,28 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         tempDiv.querySelectorAll('img').forEach(img => {
             images.push({ data: img.src, in: 'question' }); // Default to question
         });
-        
-        // This regex finds all option markers (A, B, C, D) followed by a dot or within parentheses
-        const optionSplitterRegex = /(?=[(]?[A-D][).])/g;
-        let parts = fullText.replace(qMatch[0], '').trim().split(optionSplitterRegex);
-        
-        // Check if the first part is question text or starts with an option
-        const firstPartIsOption = /^\s*[(]?[A-D][).]/i.test(parts[0]);
 
-        if (parts.length > 1 && firstPartIsOption) {
-            questionText = '';
-        } else if (parts.length > 0) {
-            questionText = parts.shift()?.trim() || '';
-        }
+        // More specific regex: looks for (A) or A. with optional spacing.
+        const optionMarkerRegex = /(?=\s*[(]?[A-D][).])/;
+        let parts = fullText.replace(qMatch[0], '').trim().split(optionMarkerRegex);
+        
+        questionText = cleanText(parts.shift()?.trim() || '');
 
-        parts.forEach(part => {
-            const trimmedPart = part.trim();
-            if (trimmedPart) {
-                const optionKeyMatch = trimmedPart.match(/^\s*[(]?([A-D])[).]/i);
-                if (optionKeyMatch) {
-                    const key = optionKeyMatch[1].toUpperCase();
-                    const value = trimmedPart.substring(optionKeyMatch[0].length).trim();
-                    options[key] = cleanText(value);
-                }
+        let remainingText = parts.join('');
+        
+        // This regex looks for the option marker and captures the text until the next option marker or the end of the string.
+        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/g;
+
+        let match;
+        const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
+        while((match = optionExtractor.exec(textWithSentinel)) !== null) {
+            const key = match[1].toUpperCase();
+            const value = match[2].trim();
+            if (value) {
+                options[key] = cleanText(value);
             }
-        });
-
-        questionText = cleanText(questionText);
-
+        }
+        
         if (questionText || Object.keys(options).length > 0 || images.length > 0) {
             questions.push({ questionText, options, images });
         }
