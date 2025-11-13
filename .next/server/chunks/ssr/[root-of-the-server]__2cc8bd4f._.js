@@ -446,7 +446,7 @@ const cleanText = (text)=>{
         '7': '⁷',
         '8': '⁸',
         '9': '⁹',
-        '+': '⁺',
+        '+': -'⁺',
         '-': '⁻',
         '(': '⁽',
         ')': '⁾'
@@ -478,91 +478,11 @@ const parseHtmlToQuestions = (html)=>{
     "TURBOPACK unreachable";
     const container = undefined;
     const questions = undefined;
-    let currentQuestion;
-    const questionStartRegex = undefined;
-    const optionMarkerRegex = undefined;
-    const finalizeQuestion = undefined;
-    let unprocessedElements;
+    let questionBlocks;
     let currentBlock;
+    const questionStartRegex = undefined;
     const el = undefined;
-    function processBlock(block) {
-        finalizeQuestion();
-        let fullHtml = block.map((el)=>el.outerHTML).join(' ');
-        let tempDiv = document.createElement('div');
-        tempDiv.innerHTML = fullHtml;
-        let fullText = cleanText(tempDiv.textContent || '');
-        const questionNumberMatch = fullText.match(questionStartRegex);
-        let textWithoutNumber = questionNumberMatch ? fullText.substring(questionNumberMatch[0].length).trim() : fullText;
-        currentQuestion = {
-            questionText: '',
-            options: {},
-            images: []
-        };
-        // Process images
-        Array.from(tempDiv.querySelectorAll('img')).forEach((img)=>{
-            // Default to question, will re-assign if an option is found
-            currentQuestion?.images.push({
-                data: img.src,
-                in: 'question'
-            });
-        });
-        // Regex to find the start of the first option (A, B, C, or D)
-        const firstOptionRegex = /(?:\s|^|\b)(?:A\.|(?:\(A\)))\s/;
-        let optionStartIndex = textWithoutNumber.search(firstOptionRegex);
-        let questionText = textWithoutNumber;
-        let optionsText = '';
-        if (optionStartIndex !== -1) {
-            questionText = textWithoutNumber.substring(0, optionStartIndex).trim();
-            optionsText = textWithoutNumber.substring(optionStartIndex).trim();
-        }
-        currentQuestion.questionText = questionText;
-        // If optionsText is empty, it might be a multi-line question.
-        // We've already combined paragraphs, so options should be in the text.
-        const optionSplitRegex = /(?=(?:\s|^|\b)(?:[A-D]\.|(?:\([A-D]\)))\s)/g;
-        const optionParts = optionsText.split(optionSplitRegex).filter((p)=>p.trim());
-        const optionContentRegex = /^(?:([A-D])\.|(?:\(([A-D])\)))\s(.*)/;
-        for (const part of optionParts){
-            const cleanedPart = part.trim();
-            const match = cleanedPart.match(optionContentRegex);
-            if (match) {
-                const key = (match[1] || match[2]).toUpperCase();
-                const content = match[3].trim();
-                if (currentQuestion && currentQuestion.options[key] === undefined) {
-                    currentQuestion.options[key] = content;
-                }
-            }
-        }
-        // Re-assign images to options if they are found within an option's text
-        const imageElements = Array.from(tempDiv.querySelectorAll('img'));
-        imageElements.forEach((img)=>{
-            const parentElement = img.parentElement;
-            if (!parentElement) return;
-            let assigned = false;
-            // Go up the tree to find the paragraph
-            let currentEl = parentElement;
-            while(currentEl && currentEl.tagName !== 'P'){
-                currentEl = currentEl.parentElement;
-            }
-            const parentText = currentEl?.textContent || parentElement.textContent || '';
-            for (const key of [
-                'D',
-                'C',
-                'B',
-                'A'
-            ]){
-                const optionStartText = `${key}.`;
-                const optionStartParenText = `(${key})`;
-                if (currentQuestion?.options[key] && (parentText.includes(optionStartText) || parentText.includes(optionStartParenText))) {
-                    const imgInQuestionIndex = currentQuestion.images.findIndex((i)=>i.data === img.src && i.in === 'question');
-                    if (imgInQuestionIndex !== -1) {
-                        currentQuestion.images[imgInQuestionIndex].in = `option${key}`;
-                    }
-                    assigned = true;
-                    break;
-                }
-            }
-        });
-    }
+    const block = undefined;
 };
 const getBase64Image = (imgSrc)=>{
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
