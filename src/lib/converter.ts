@@ -62,34 +62,31 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
             currentQuestion = { questionText: '', options: {}, images: [] };
 
-            const optionRegex = /\(\s*([A-Z])\s*\)|([A-Z])\s*[.)]/g;
+            const optionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
             let lastIndex = 0;
             let match;
             let firstOptionIndex = -1;
+            let optionsOnThisLine: { key: string, text: string, index: number }[] = [];
 
             while ((match = optionRegex.exec(textContent)) !== null) {
+                const key = match[1] || match[2];
+                optionsOnThisLine.push({ key, text: '', index: match.index + match[0].length });
                 if (firstOptionIndex === -1) {
                     firstOptionIndex = match.index;
-                    currentQuestion.questionText = textContent.substring(0, firstOptionIndex).trim();
+                }
+            }
+
+            if (firstOptionIndex !== -1) {
+                currentQuestion.questionText = textContent.substring(0, firstOptionIndex).trim();
+
+                for (let i = 0; i < optionsOnThisLine.length; i++) {
+                    const start = optionsOnThisLine[i].index;
+                    const end = (i + 1 < optionsOnThisLine.length) ? optionsOnThisLine[i + 1].index - optionsOnThisLine[i+1].key.length -2 : textContent.length;
+                    const optionText = textContent.substring(start, end).trim();
+                    currentQuestion.options[optionsOnThisLine[i].key] = optionText;
+                    lastOptionKey = optionsOnThisLine[i].key;
                 }
 
-                if (lastIndex > 0) {
-                    const previousOptionLetter = optionRegex.exec(textContent.substring(0, lastIndex))?.[1] || optionRegex.exec(textContent.substring(0, lastIndex))?.[2];
-                    if (previousOptionLetter) {
-                        const optionText = textContent.substring(lastIndex, match.index).trim();
-                        currentQuestion.options[previousOptionLetter] = (currentQuestion.options[previousOptionLetter] || '') + optionText;
-                    }
-                }
-                const currentOptionLetter = match[1] || match[2];
-                lastIndex = match.index + match[0].length;
-                lastOptionKey = currentOptionLetter;
-            }
-             
-            if (firstOptionIndex !== -1) { // Options were found
-                if (lastOptionKey) {
-                    const lastOptionText = textContent.substring(lastIndex).trim();
-                    currentQuestion.options[lastOptionKey] = (currentQuestion.options[lastOptionKey] || '') + lastOptionText;
-                }
             } else { // No options found on this line
                 currentQuestion.questionText = textContent;
             }
@@ -414,3 +411,5 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
+
+    
