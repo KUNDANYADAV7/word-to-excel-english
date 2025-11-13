@@ -405,6 +405,10 @@ const parseHtmlToQuestions = (html)=>{
     }
     const container = document.createElement('div');
     container.innerHTML = html;
+    // Preserve line breaks from paragraphs and lists
+    container.querySelectorAll('p, li').forEach((el)=>{
+        el.appendChild(document.createTextNode('\n'));
+    });
     const questions = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
     let currentBlockElements = [];
@@ -436,7 +440,7 @@ const parseHtmlToQuestions = (html)=>{
     for (const block of questionBlocks){
         const tempDiv = document.createElement('div');
         block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
-        let fullText = (tempDiv.textContent || '').replace(/(\r\n|\n|\r)/gm, " ").trim();
+        let fullText = (tempDiv.textContent || '').trim();
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
         let questionText = '';
@@ -452,7 +456,7 @@ const parseHtmlToQuestions = (html)=>{
         let parts = fullText.replace(qMatch[0], '').trim().split(optionMarkerRegex);
         questionText = cleanText(parts.shift()?.trim() || '');
         let remainingText = parts.join('');
-        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/g;
+        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/gs;
         let match;
         const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
         while((match = optionExtractor.exec(textWithSentinel)) !== null){

@@ -41,6 +41,11 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     const container = document.createElement('div');
     container.innerHTML = html;
 
+    // Preserve line breaks from paragraphs and lists
+    container.querySelectorAll('p, li').forEach(el => {
+        el.appendChild(document.createTextNode('\n'));
+    });
+
     const questions: Question[] = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
     
@@ -71,7 +76,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         const tempDiv = document.createElement('div');
         block.elements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
         
-        let fullText = (tempDiv.textContent || '').replace(/(\r\n|\n|\r)/gm, " ").trim();
+        let fullText = (tempDiv.textContent || '').trim();
 
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
@@ -91,7 +96,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
         let remainingText = parts.join('');
         
-        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/g;
+        const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/gs;
 
         let match;
         const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
@@ -387,5 +392,7 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
+
+    
 
     
