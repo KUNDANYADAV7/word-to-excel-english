@@ -443,8 +443,10 @@ const parseHtmlToQuestions = (html)=>{
     const finalizeQuestion = undefined;
     const elements = undefined;
     const questionStartRegex = undefined;
-    // Stricter regex for options: (A), A), A. but not (ACC)
+    // Stricter regex for options: (A), A), A. but not things like (ACC) or (BP)
+    // It looks for a single uppercase letter, optionally surrounded by parentheses, or followed by a dot.
     const singleOptionMarkerRegex = undefined;
+    // Regex for finding multiple options on a single line. It requires a space/boundary before the marker.
     const multiOptionLineRegex = undefined;
     const el = undefined;
 };

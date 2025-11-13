@@ -416,9 +416,11 @@ const parseHtmlToQuestions = (html)=>{
     };
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    // Stricter regex for options: (A), A), A. but not (ACC)
+    // Stricter regex for options: (A), A), A. but not things like (ACC) or (BP)
+    // It looks for a single uppercase letter, optionally surrounded by parentheses, or followed by a dot.
     const singleOptionMarkerRegex = /^(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-    const multiOptionLineRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
+    // Regex for finding multiple options on a single line. It requires a space/boundary before the marker.
+    const multiOptionLineRegex = /(?:^|\s)(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
@@ -432,40 +434,37 @@ const parseHtmlToQuestions = (html)=>{
                 options: {},
                 images: []
             };
-            const optionMatches = [
-                ...questionTextAfterNumber.matchAll(multiOptionLineRegex)
-            ];
-            const potentialOptionStarts = optionMatches.map((m)=>m.index);
-            let firstOptionIndex = -1;
-            // Find the first option that seems plausible (not inside a word, etc.)
-            if (potentialOptionStarts.length > 0) {
-                firstOptionIndex = potentialOptionStarts[0] ?? -1;
-            }
+            // Find the first plausible option marker
+            const firstOptionMatch = questionTextAfterNumber.match(/(?:^|\s)(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/);
+            const firstOptionIndex = firstOptionMatch ? firstOptionMatch.index : -1;
             if (firstOptionIndex !== -1) {
-                // Check if we have multiple options on one line (horizontal layout)
-                if (optionMatches.length > 1 && optionMatches[1].index - (optionMatches[0].index + optionMatches[0][0].length) < 50) {
-                    currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
-                    for(let i = 0; i < optionMatches.length; i++){
-                        const currentMatch = optionMatches[i];
-                        const nextMatch = optionMatches[i + 1];
-                        const key = (currentMatch[1] || currentMatch[2])?.trim();
+                // The text before the first option is part of the question
+                currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
+                const optionsText = questionTextAfterNumber.substring(firstOptionIndex).trim();
+                // Check for multiple options on the same line (horizontal layout)
+                const horizontalOptionMatches = [
+                    ...optionsText.matchAll(multiOptionLineRegex)
+                ];
+                if (horizontalOptionMatches.length > 1) {
+                    for(let i = 0; i < horizontalOptionMatches.length; i++){
+                        const match = horizontalOptionMatches[i];
+                        const key = (match[1] || match[2])?.trim();
                         if (!key) continue;
-                        const start = currentMatch.index + currentMatch[0].length;
-                        const end = nextMatch ? nextMatch.index : questionTextAfterNumber.length;
-                        const optionText = questionTextAfterNumber.substring(start, end).trim();
+                        const start = match.index + match[0].length;
+                        const nextMatch = horizontalOptionMatches[i + 1];
+                        const end = nextMatch ? nextMatch.index : optionsText.length;
+                        const optionText = optionsText.substring(start, end).trim();
                         if (optionText || !currentQuestion.options[key]) {
                             currentQuestion.options[key] = optionText;
                         }
                     }
                     lastOptionKey = null; // Horizontal options processed, reset state.
                 } else {
-                    currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
-                    const restOfText = questionTextAfterNumber.substring(firstOptionIndex);
-                    const firstOptionMatch = restOfText.match(singleOptionMarkerRegex);
-                    if (firstOptionMatch) {
-                        const keyText = (firstOptionMatch[1] || firstOptionMatch[2])?.trim();
+                    const optionMatch = optionsText.match(singleOptionMarkerRegex);
+                    if (optionMatch) {
+                        const keyText = (optionMatch[1] || optionMatch[2])?.trim();
                         if (keyText) {
-                            const optionText = restOfText.substring(firstOptionMatch[0].length).trim();
+                            const optionText = optionsText.substring(optionMatch[0].length).trim();
                             currentQuestion.options[keyText] = optionText;
                             lastOptionKey = keyText;
                         }
