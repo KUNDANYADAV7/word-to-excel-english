@@ -432,18 +432,58 @@ const PIXELS_TO_EMUS = 9525;
 const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75;
 const POINTS_TO_PIXELS = 4 / 3;
 const IMAGE_MARGIN_PIXELS = 15;
+const cleanText = (text)=>{
+    if (!text) return '';
+    let cleaned = text.replace(/&nbsp;/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, ' ').trim();
+    const superscripts = {
+        '0': '⁰',
+        '1': '¹',
+        '2': '²',
+        '3': '³',
+        '4': '⁴',
+        '5': '⁵',
+        '6': '⁶',
+        '7': '⁷',
+        '8': '⁸',
+        '9': '⁹',
+        '+': '⁺',
+        '-': '⁻',
+        '(': '⁽',
+        ')': '⁾'
+    };
+    cleaned = cleaned.replace(/<sup>(.*?)<\/sup>/g, (match, content)=>{
+        return content.split('').map((char)=>superscripts[char] || char).join('');
+    });
+    const subscripts = {
+        '0': '₀',
+        '1': '₁',
+        '2': '₂',
+        '3': '₃',
+        '4': '₄',
+        '5': '₅',
+        '6': '₆',
+        '7': '₇',
+        '8': '₈',
+        '9': '₉',
+        '+': '₊',
+        '-': '₋'
+    };
+    cleaned = cleaned.replace(/<sub>(.*?)<\/sub>/g, (match, content)=>{
+        return content.split('').map((char)=>subscripts[char] || char).join('');
+    });
+    return cleaned.replace(/(\d+)\s*([°˚º])\s*([CF]?)/gi, '$1$2$3').trim();
+};
 const parseHtmlToQuestions = (html)=>{
     const questions = [];
     if ("TURBOPACK compile-time truthy", 1) return questions;
     "TURBOPACK unreachable";
     const container = undefined;
-    let processedHtml;
     const elements = undefined;
     let currentQuestion;
-    let accumulatingText;
+    let accumulatingLines;
     const questionStartRegex = undefined;
-    const verticalOptionMarkerRegex = undefined;
-    const horizontalOptionRegex = undefined;
+    const optionMarkerRegex = undefined;
+    const horizontalOptionMarkerRegex = undefined;
     const finalizeQuestion = undefined;
     const el = undefined;
 };
