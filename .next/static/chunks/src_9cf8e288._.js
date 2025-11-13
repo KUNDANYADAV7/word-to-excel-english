@@ -413,7 +413,7 @@ const parseHtmlToQuestions = (html)=>{
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
-        const questionStartRegex = /^(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
+        const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
         const isNewQuestion = questionStartRegex.test(textContent);
         if (isNewQuestion) {
             finalizeQuestion();
@@ -431,20 +431,21 @@ const parseHtmlToQuestions = (html)=>{
             let optionsOnThisLine = [];
             while((match = optionRegex.exec(textContent)) !== null){
                 const key = match[1] || match[2];
-                optionsOnThisLine.push({
-                    key,
-                    text: '',
-                    index: match.index + match[0].length
-                });
                 if (firstOptionIndex === -1) {
                     firstOptionIndex = match.index;
                 }
+                optionsOnThisLine.push({
+                    key,
+                    text: '',
+                    index: match.index,
+                    matchLength: match[0].length
+                });
             }
             if (firstOptionIndex !== -1) {
                 currentQuestion.questionText = textContent.substring(0, firstOptionIndex).trim();
                 for(let i = 0; i < optionsOnThisLine.length; i++){
-                    const start = optionsOnThisLine[i].index;
-                    const end = i + 1 < optionsOnThisLine.length ? optionsOnThisLine[i + 1].index - optionsOnThisLine[i + 1].key.length - 2 : textContent.length;
+                    const start = optionsOnThisLine[i].index + optionsOnThisLine[i].matchLength;
+                    const end = i + 1 < optionsOnThisLine.length ? optionsOnThisLine[i + 1].index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
                     currentQuestion.options[optionsOnThisLine[i].key] = optionText;
                     lastOptionKey = optionsOnThisLine[i].key;
