@@ -442,6 +442,8 @@ const parseHtmlToQuestions = (html)=>{
     let lastOptionKey;
     const finalizeQuestion = undefined;
     const elements = undefined;
+    const optionRegex = undefined;
+    const multiOptionRegex = undefined;
     const el = undefined;
 };
 const getBase64Image = (imgSrc)=>{
@@ -464,7 +466,8 @@ const getImageDimensions = (imgSrc)=>{
     });
 };
 const formatTextForExcel = (text)=>{
-    return text.replace(/∞/g, 'Infinity');
+    // This character replacement is crucial for some symbols that ExcelJS cannot handle.
+    return text.replace(/∞/g, 'Infinity').replace(/√/g, 'sqrt');
 };
 const generateExcel = async (questions)=>{
     if (questions.length === 0) {

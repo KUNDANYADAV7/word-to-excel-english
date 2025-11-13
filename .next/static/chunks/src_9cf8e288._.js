@@ -364,7 +364,8 @@ const parseHtmlToQuestions = (html)=>{
         "TURBOPACK unreachable";
     }
     const container = document.createElement('div');
-    let processedHtml = html.replace(/<sup>(.*?)<\/sup>/g, (match, content)=>{
+    let processedHtml = html.replace(/<p><\/p>/g, '') // Remove empty paragraphs
+    .replace(/<sup>(.*?)<\/sup>/g, (match, content)=>{
         const superscripts = {
             '0': '⁰',
             '1': '¹',
@@ -410,6 +411,8 @@ const parseHtmlToQuestions = (html)=>{
         }
     };
     const elements = Array.from(container.children);
+    const optionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
+    const multiOptionRegex = /(?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
@@ -424,51 +427,64 @@ const parseHtmlToQuestions = (html)=>{
                 options: {},
                 images: []
             };
-            const optionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
-            let lastIndex = 0;
-            let match;
-            let firstOptionIndex = -1;
-            let optionsOnThisLine = [];
-            while((match = optionRegex.exec(textContent)) !== null){
-                const key = match[1] || match[2];
-                if (firstOptionIndex === -1) {
-                    firstOptionIndex = match.index;
-                }
-                optionsOnThisLine.push({
-                    key,
-                    text: '',
-                    index: match.index,
-                    matchLength: match[0].length
-                });
-            }
-            if (firstOptionIndex !== -1) {
-                currentQuestion.questionText = textContent.substring(0, firstOptionIndex).trim();
-                for(let i = 0; i < optionsOnThisLine.length; i++){
-                    const start = optionsOnThisLine[i].index + optionsOnThisLine[i].matchLength;
-                    const end = i + 1 < optionsOnThisLine.length ? optionsOnThisLine[i + 1].index : textContent.length;
+            let optionMatches = [
+                ...textContent.matchAll(multiOptionRegex)
+            ];
+            if (optionMatches.length > 1) {
+                currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
+                for(let i = 0; i < optionMatches.length; i++){
+                    const match = optionMatches[i];
+                    const key = (match[1] || match[2]).trim();
+                    const start = match.index + match[0].length;
+                    const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
-                    currentQuestion.options[optionsOnThisLine[i].key] = optionText;
-                    lastOptionKey = optionsOnThisLine[i].key;
+                    currentQuestion.options[key] = optionText;
+                    lastOptionKey = key;
                 }
             } else {
-                currentQuestion.questionText = textContent;
+                const match = textContent.match(optionRegex);
+                if (match) {
+                    currentQuestion.questionText = textContent.substring(0, match.index).trim();
+                    const key = (match[1] || match[2]).trim();
+                    const optionText = textContent.substring(match.index + match[0].length).trim();
+                    currentQuestion.options[key] = optionText;
+                    lastOptionKey = key;
+                } else {
+                    currentQuestion.questionText = textContent;
+                    lastOptionKey = null;
+                }
             }
         } else if (currentQuestion) {
-            const optionRegex = /^\s*(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-            const match = textContent.match(optionRegex);
-            if (match) {
-                const optionLetter = match[1] || match[2];
-                lastOptionKey = optionLetter;
-                const optionText = textContent.substring(match[0].length).trim();
-                currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
-                currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
+            let optionMatches = [
+                ...textContent.matchAll(multiOptionRegex)
+            ];
+            if (optionMatches.length > 1) {
+                for(let i = 0; i < optionMatches.length; i++){
+                    const match = optionMatches[i];
+                    const key = (match[1] || match[2]).trim();
+                    const start = match.index + match[0].length;
+                    const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
+                    const optionText = textContent.substring(start, end).trim();
+                    currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + optionText;
+                    currentQuestion.options[key] = currentQuestion.options[key].trim();
+                    lastOptionKey = key;
+                }
             } else {
-                if (lastOptionKey) {
-                    currentQuestion.options[lastOptionKey] += ' ' + textContent;
-                    currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
+                const match = textContent.match(optionRegex);
+                if (match) {
+                    const optionLetter = (match[1] || match[2]).trim();
+                    lastOptionKey = optionLetter;
+                    const optionText = textContent.substring(match[0].length).trim();
+                    currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
+                    currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
                 } else {
-                    currentQuestion.questionText += ' ' + textContent;
-                    currentQuestion.questionText = currentQuestion.questionText.trim();
+                    if (lastOptionKey) {
+                        currentQuestion.options[lastOptionKey] += ' ' + textContent;
+                        currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
+                    } else {
+                        currentQuestion.questionText += ' ' + textContent;
+                        currentQuestion.questionText = currentQuestion.questionText.trim();
+                    }
                 }
             }
         }
@@ -515,7 +531,8 @@ const getImageDimensions = (imgSrc)=>{
     });
 };
 const formatTextForExcel = (text)=>{
-    return text.replace(/∞/g, 'Infinity');
+    // This character replacement is crucial for some symbols that ExcelJS cannot handle.
+    return text.replace(/∞/g, 'Infinity').replace(/√/g, 'sqrt');
 };
 const generateExcel = async (questions)=>{
     if (questions.length === 0) {
