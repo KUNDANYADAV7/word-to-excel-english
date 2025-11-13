@@ -416,62 +416,49 @@ const parseHtmlToQuestions = (html)=>{
     };
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    // Stricter regex for options: (A), A), A. but not things like (ACC) or (BP)
-    // It looks for a single uppercase letter, optionally surrounded by parentheses, or followed by a dot.
-    const singleOptionMarkerRegex = /^(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-    // Regex for finding multiple options on a single line. It requires a space/boundary before the marker.
-    const multiOptionLineRegex = /(?:^|\s)(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
+    // Stricter regex: (A) or A. or A) -- but not (ACC)
+    const singleOptionMarkerRegex = /^\s*(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])(?!\S)/;
+    const multiOptionLineRegex = /(?:^|\s)(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])(?!\S)/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
         const isNewQuestion = questionStartRegex.test(textContent);
         if (isNewQuestion) {
             finalizeQuestion();
-            const questionNumberMatch = textContent.match(questionStartRegex);
-            const questionTextAfterNumber = questionNumberMatch ? textContent.substring(questionNumberMatch[0].length).trim() : textContent;
             currentQuestion = {
                 questionText: '',
                 options: {},
                 images: []
             };
-            // Find the first plausible option marker
-            const firstOptionMatch = questionTextAfterNumber.match(/(?:^|\s)(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/);
-            const firstOptionIndex = firstOptionMatch ? firstOptionMatch.index : -1;
-            if (firstOptionIndex !== -1) {
-                // The text before the first option is part of the question
-                currentQuestion.questionText = questionTextAfterNumber.substring(0, firstOptionIndex).trim();
-                const optionsText = questionTextAfterNumber.substring(firstOptionIndex).trim();
-                // Check for multiple options on the same line (horizontal layout)
-                const horizontalOptionMatches = [
-                    ...optionsText.matchAll(multiOptionLineRegex)
-                ];
-                if (horizontalOptionMatches.length > 1) {
-                    for(let i = 0; i < horizontalOptionMatches.length; i++){
-                        const match = horizontalOptionMatches[i];
-                        const key = (match[1] || match[2])?.trim();
-                        if (!key) continue;
-                        const start = match.index + match[0].length;
-                        const nextMatch = horizontalOptionMatches[i + 1];
-                        const end = nextMatch ? nextMatch.index : optionsText.length;
-                        const optionText = optionsText.substring(start, end).trim();
-                        if (optionText || !currentQuestion.options[key]) {
-                            currentQuestion.options[key] = optionText;
-                        }
-                    }
-                    lastOptionKey = null; // Horizontal options processed, reset state.
-                } else {
-                    const optionMatch = optionsText.match(singleOptionMarkerRegex);
-                    if (optionMatch) {
-                        const keyText = (optionMatch[1] || optionMatch[2])?.trim();
-                        if (keyText) {
-                            const optionText = optionsText.substring(optionMatch[0].length).trim();
-                            currentQuestion.options[keyText] = optionText;
-                            lastOptionKey = keyText;
-                        }
-                    }
-                }
-            } else {
+            const questionTextAfterNumber = textContent.replace(questionStartRegex, '').trim();
+            if (questionTextAfterNumber) {
                 currentQuestion.questionText = questionTextAfterNumber;
+            }
+            // If the line is just the number, questionText will be empty, and we'll append to it on the next lines.
+            // Now, check for horizontal options on this same line
+            const horizontalOptionMatches = [
+                ...currentQuestion.questionText.matchAll(multiOptionLineRegex)
+            ];
+            if (horizontalOptionMatches.length > 1) {
+                const firstOptionMatch = horizontalOptionMatches[0];
+                const textBeforeOptions = currentQuestion.questionText.substring(0, firstOptionMatch.index).trim();
+                const optionsText = currentQuestion.questionText.substring(firstOptionMatch.index).trim();
+                currentQuestion.questionText = textBeforeOptions;
+                const optionParts = optionsText.split(/(?:^|\s)(?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/).filter((s)=>s && s.trim() !== '');
+                let currentKey = null;
+                [
+                    ...optionsText.matchAll(multiOptionLineRegex)
+                ].forEach((match, i)=>{
+                    const key = (match[1] || match[2])?.trim();
+                    if (!key) return;
+                    const start = match.index + match[0].length;
+                    const nextMatch = horizontalOptionMatches[i + 1];
+                    const end = nextMatch ? nextMatch.index : optionsText.length;
+                    const optionText = optionsText.substring(start, end).trim();
+                    if (optionText || !currentQuestion.options[key]) {
+                        currentQuestion.options[key] = optionText;
+                    }
+                });
                 lastOptionKey = null;
             }
         } else if (currentQuestion) {
