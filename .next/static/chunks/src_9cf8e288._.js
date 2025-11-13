@@ -405,6 +405,11 @@ const parseHtmlToQuestions = (html)=>{
     let lastOptionKey = null;
     const finalizeQuestion = ()=>{
         if (currentQuestion) {
+            // Clean up question and option text one last time before pushing
+            currentQuestion.questionText = currentQuestion.questionText.replace(/\s+/g, ' ').trim();
+            for(const key in currentQuestion.options){
+                currentQuestion.options[key] = currentQuestion.options[key].replace(/\s+/g, ' ').trim();
+            }
             questions.push(currentQuestion);
             currentQuestion = null;
             lastOptionKey = null;
@@ -412,8 +417,8 @@ const parseHtmlToQuestions = (html)=>{
     };
     const elements = Array.from(container.children);
     const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]\s*/;
-    const optionMarkerRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-    const multiOptionLineRegex = /((?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)]))/g;
+    const optionMarkerRegex = /^\s*((?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)]))/;
+    const multiOptionLineRegex = /(\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
@@ -429,23 +434,22 @@ const parseHtmlToQuestions = (html)=>{
                 options: {},
                 images: []
             };
+            // Check for multiple options on the same line (horizontal layout)
             const optionMatches = [
                 ...textContent.matchAll(multiOptionLineRegex)
             ];
-            // Check for multiple options on the same line
             if (optionMatches.length > 1) {
                 currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
                 for(let i = 0; i < optionMatches.length; i++){
-                    const match = optionMatches[i];
-                    const keyMatch = match[0].match(/[A-Z]/);
+                    const currentMatch = optionMatches[i];
+                    const nextMatch = optionMatches[i + 1];
+                    const keyMatch = currentMatch[0].match(/[A-Z]/);
                     if (!keyMatch) continue;
                     const key = keyMatch[0];
-                    const start = match.index + match[0].length;
-                    const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
+                    const start = currentMatch.index + currentMatch[0].length;
+                    const end = nextMatch ? nextMatch.index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
-                    if (optionText) {
-                        currentQuestion.options[key] = optionText;
-                    }
+                    currentQuestion.options[key] = optionText;
                     lastOptionKey = key;
                 }
             } else {
@@ -466,22 +470,19 @@ const parseHtmlToQuestions = (html)=>{
             }
         } else if (currentQuestion) {
             const match = textContent.match(optionMarkerRegex);
-            if (match && match.index === 0) {
-                const optionLetterMatch = match[0].match(/[A-Z]/);
-                if (optionLetterMatch) {
-                    const optionLetter = optionLetterMatch[0];
-                    lastOptionKey = optionLetter;
+            if (match) {
+                const keyMatch = match[0].match(/[A-Z]/);
+                if (keyMatch) {
+                    const key = keyMatch[0];
                     const optionText = textContent.substring(match[0].length).trim();
-                    currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
-                    currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
+                    currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + optionText;
+                    lastOptionKey = key;
                 }
             } else {
-                if (lastOptionKey) {
+                if (lastOptionKey && currentQuestion.options[lastOptionKey] !== undefined) {
                     currentQuestion.options[lastOptionKey] += ' ' + textContent;
-                    currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
                 } else {
                     currentQuestion.questionText += ' ' + textContent;
-                    currentQuestion.questionText = currentQuestion.questionText.trim();
                 }
             }
         }
