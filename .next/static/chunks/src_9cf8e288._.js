@@ -448,12 +448,10 @@ const parseHtmlToQuestions = (html)=>{
                 in: 'question'
             }); // Default to question
         });
-        // More specific regex: looks for (A) or A. with optional spacing.
-        const optionMarkerRegex = /(?=\s*[(]?[A-D][).])/;
+        const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
         let parts = fullText.replace(qMatch[0], '').trim().split(optionMarkerRegex);
         questionText = cleanText(parts.shift()?.trim() || '');
         let remainingText = parts.join('');
-        // This regex looks for the option marker and captures the text until the next option marker or the end of the string.
         const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/g;
         let match;
         const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
