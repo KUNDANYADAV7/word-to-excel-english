@@ -40,141 +40,90 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     const container = document.createElement('div');
     container.innerHTML = html;
-    
+
     const questions: Question[] = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
-    const optionMarkerRegex = /(?:\s|^|\b)([A-D])[.)]\s|(?:\s|^|\b)\(([A-D])\)\s/;
-    
-    let blocks: { elements: Element[], text: string }[] = [];
-    let currentBlock: Element[] = [];
+    const optionMarkerRegex = /(?:^|\s|\b)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/;
+    const combinedOptionRegex = new RegExp(optionMarkerRegex.source, 'g');
+
+    let currentBlockElements: Element[] = [];
+    let potentialQuestionBlocks: { elements: Element[] }[] = [];
 
     // Group elements into blocks based on question numbers
     for (const el of Array.from(container.children)) {
         const elText = el.textContent?.trim() || '';
-        if (questionStartRegex.test(elText) && currentBlock.length > 0) {
-            blocks.push({ elements: currentBlock, text: currentBlock.map(e => e.textContent?.trim() || '').join(' ') });
-            currentBlock = [el];
+        if (questionStartRegex.test(elText)) {
+            if (currentBlockElements.length > 0) {
+                potentialQuestionBlocks.push({ elements: currentBlockElements });
+            }
+            currentBlockElements = [el];
         } else {
-            currentBlock.push(el);
+            currentBlockElements.push(el);
         }
     }
-    if (currentBlock.length > 0) {
-        blocks.push({ elements: currentBlock, text: currentBlock.map(e => e.textContent?.trim() || '').join(' ') });
-    }
-    
-    // If the first block does not start with a question number, it might be a preamble.
-    // Let's check the subsequent blocks.
-    if(blocks.length > 1 && !questionStartRegex.test(blocks[0].text)) {
-        blocks[1].elements = [...blocks[0].elements, ...blocks[1].elements];
-        blocks[1].text = blocks[0].text + " " + blocks[1].text;
-        blocks.shift();
+    if (currentBlockElements.length > 0) {
+        potentialQuestionBlocks.push({ elements: currentBlockElements });
     }
 
-    // Process each block to find questions
-    let currentQuestionElements: Element[] = [];
-    let currentQuestionNumberText = '';
-
-    for (const block of blocks) {
-        const blockText = block.text;
-        const qNumMatch = blockText.match(questionStartRegex);
+    // Process each block
+    for (const block of potentialQuestionBlocks) {
+        const tempDiv = document.createElement('div');
+        block.elements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
         
-        if (qNumMatch) {
-            // Finalize previous question
-            if (currentQuestionElements.length > 0) {
-                const qText = currentQuestionNumberText + " " + currentQuestionElements.map(e => e.textContent || '').join('\n');
-                questions.push(processQuestionBlock(qText, currentQuestionElements));
-            }
-            // Start new question
-            currentQuestionNumberText = qNumMatch[0];
-            const remainingElements = block.elements;
-            
-            const tempDiv = document.createElement('div');
-            remainingElements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
-            let blockHtml = tempDiv.innerHTML;
-            blockHtml = blockHtml.replace(currentQuestionNumberText, '').trim();
-            const newDiv = document.createElement('div');
-            newDiv.innerHTML = blockHtml;
-            currentQuestionElements = Array.from(newDiv.children);
+        let fullText = tempDiv.innerText || '';
+        fullText = fullText.replace(/(\r\n|\n|\r)/gm, " \n "); // Preserve line breaks for splitting
+
+        const qMatch = fullText.match(questionStartRegex);
+        if (!qMatch) continue;
+
+        let questionText = '';
+        const options: { [key: string]: string } = {};
+        const images: Question['images'] = [];
+        
+        tempDiv.querySelectorAll('img').forEach(img => {
+            images.push({ data: img.src, in: 'question' }); // Default to question
+        });
+
+        // Split text into lines to handle vertical and horizontal options
+        const lines = fullText.split('\n').map(line => line.trim()).filter(line => line);
+        
+        let questionLines: string[] = [];
+        let optionLines: string[] = [];
+        let foundOptions = false;
+
+        let lineText = lines.join(' ').replace(qMatch[0], '').trim();
+
+        const firstOptionMatch = lineText.match(/(?:\s|\b)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/);
+
+        if (firstOptionMatch && firstOptionMatch.index !== undefined) {
+             questionText = lineText.substring(0, firstOptionMatch.index).trim();
+             let optionsStr = lineText.substring(firstOptionMatch.index).trim();
+
+             const optionSplitRegex = /(?=(?:\s|\b)[A-D][.)]|\((?:^|\s|\b)[A-D]\))/g;
+             const optionParts = optionsStr.split(optionSplitRegex).filter(p => p.trim());
+
+             for(const part of optionParts) {
+                 const keyMatch = part.match(optionMarkerRegex);
+                 if(keyMatch) {
+                    const key = (keyMatch[1] || keyMatch[2]).toUpperCase();
+                    const content = part.replace(keyMatch[0], '').trim();
+                    options[key] = cleanText(content);
+                 }
+             }
 
         } else {
-            currentQuestionElements.push(...block.elements);
+            questionText = lineText;
+        }
+
+        questionText = cleanText(questionText.replace(/^\d+\s*[.)]/, ''));
+
+        if(questionText || Object.keys(options).length > 0 || images.length > 0) {
+            questions.push({ questionText, options, images });
         }
     }
-    
-    // Add the last question
-    if (currentQuestionElements.length > 0) {
-        const qText = currentQuestionNumberText + " " + currentQuestionElements.map(e => e.textContent || '').join('\n');
-        questions.push(processQuestionBlock(qText, currentQuestionElements));
-    }
-    
-    return questions.filter(q => q.questionText || Object.keys(q.options).length > 0 || q.images.length > 0);
+
+    return questions;
 };
-
-const processQuestionBlock = (fullText: string, elements: Element[]): Question => {
-    let question: Question = { questionText: '', options: {}, images: [] };
-    
-    // Handle images for the entire block
-    const tempDiv = document.createElement('div');
-    elements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
-    tempDiv.querySelectorAll('img').forEach(img => {
-        question.images.push({ data: img.src, in: 'question' }); // Default to question
-    });
-    
-    fullText = cleanText(fullText.replace(/^\s*\d+\s*[.)]/, ''));
-    
-    const optionSplitRegex = /(?=(?:\s|^|\b)(?:[A-D][.)]|\([A-D]\))\s)/g;
-    const parts = fullText.split(optionSplitRegex);
-
-    question.questionText = cleanText(parts[0]);
-
-    for (let i = 1; i < parts.length; i++) {
-        let optionText = parts[i].trim();
-        const optionKeyMatch = optionText.match(/^([A-D])[.)]|\(([A-D])\)/);
-        if (optionKeyMatch) {
-            const key = (optionKeyMatch[1] || optionKeyMatch[2]).toUpperCase();
-            let content = optionText.substring(optionKeyMatch[0].length).trim();
-            
-            // Check if this content contains other options
-            const subOptions = content.split(optionSplitRegex);
-            if (subOptions.length > 1) {
-                question.options[key] = cleanText(subOptions[0]);
-                for (let j = 1; j < subOptions.length; j++) {
-                    parts.splice(i + j, 0, subOptions[j]);
-                }
-            } else {
-                question.options[key] = cleanText(content);
-            }
-        }
-    }
-    
-    // Re-assign images to options if they are found within an option's text
-    tempDiv.querySelectorAll('p, div, span').forEach(el => {
-        const elText = el.textContent || '';
-        const elImgs = Array.from(el.querySelectorAll('img'));
-        if(elImgs.length === 0) return;
-
-        for (const key of ['D', 'C', 'B', 'A']) { // Reverse to handle nesting
-            if (question.options[key] && elText.includes(question.options[key])) {
-                 elImgs.forEach(img => {
-                    const imgIndex = question.images.findIndex(i => i.data === img.src && i.in === 'question');
-                    if (imgIndex !== -1) {
-                        question.images[imgIndex].in = `option${key}`;
-                    }
-                 });
-                 break; 
-            }
-        }
-    });
-
-    return question;
-}
-
-
-const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: string } => {
-    const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
-    const data = imgSrc.substring(imgSrc.indexOf(',') + 1);
-    return { extension, data };
-}
 
 const getImageDimensions = (imgSrc: string): Promise<{ width: number; height: number }> => {
     return new Promise((resolve, reject) => {
@@ -184,6 +133,13 @@ const getImageDimensions = (imgSrc: string): Promise<{ width: number; height: nu
         img.src = imgSrc;
     });
 };
+
+const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: string } => {
+    const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
+    const data = imgSrc.substring(imgSrc.indexOf(',') + 1);
+    return { extension, data };
+};
+
 
 const formatTextForExcel = (text: string): string => {
     // This character replacement is crucial for some symbols that ExcelJS cannot handle.
@@ -445,4 +401,3 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
-
