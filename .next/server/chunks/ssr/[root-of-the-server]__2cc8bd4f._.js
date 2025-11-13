@@ -442,8 +442,9 @@ const parseHtmlToQuestions = (html)=>{
     let lastOptionKey;
     const finalizeQuestion = undefined;
     const elements = undefined;
-    const optionRegex = undefined;
-    const multiOptionRegex = undefined;
+    const questionStartRegex = undefined;
+    const optionMarkerRegex = undefined;
+    const multiOptionLineRegex = undefined;
     const el = undefined;
 };
 const getBase64Image = (imgSrc)=>{
