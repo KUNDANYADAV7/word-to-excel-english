@@ -446,7 +446,7 @@ const cleanText = (text)=>{
         '7': '⁷',
         '8': '⁸',
         '9': '⁹',
-        '+': -'⁺',
+        '+': '⁺',
         '-': '⁻',
         '(': '⁽',
         ')': '⁾'
@@ -505,7 +505,6 @@ const getBase64Image = (imgSrc)=>{
     };
 };
 const formatTextForExcel = (text)=>{
-    // This character replacement is crucial for some symbols that ExcelJS cannot handle.
     return text.replace(/∞/g, 'Infinity').replace(/√/g, 'sqrt');
 };
 const generateExcel = async (questions)=>{

@@ -22,7 +22,7 @@ const cleanText = (text: string): string => {
     if (!text) return '';
     let cleaned = text.replace(/&nbsp;/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, ' ').trim();
 
-    const superscripts: { [key: string]: string } = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+':- '⁺', '-': '⁻', '(': '⁽', ')': '⁾' };
+    const superscripts: { [key: string]: string } = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+': '⁺', '-': '⁻', '(': '⁽', ')': '⁾' };
     cleaned = cleaned.replace(/<sup>(.*?)<\/sup>/g, (match, content) => {
         return content.split('').map((char: string) => superscripts[char] || char).join('');
     });
@@ -41,11 +41,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     const container = document.createElement('div');
     container.innerHTML = html;
 
-    // Preserve line breaks from paragraphs and lists
-    container.querySelectorAll('p, li').forEach(el => {
-        el.appendChild(document.createTextNode('\n'));
-    });
-
     const questions: Question[] = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
     
@@ -53,7 +48,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     let questionBlocks: { elements: Element[] }[] = [];
     const allElements = Array.from(container.children);
 
-    // Group elements into blocks, starting a new block for each question number.
     for (let i = 0; i < allElements.length; i++) {
         const el = allElements[i];
         const elText = el.textContent?.trim() || '';
@@ -71,10 +65,13 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         questionBlocks.push({ elements: currentBlockElements });
     }
 
-    // Process each block
     for (const block of questionBlocks) {
         const tempDiv = document.createElement('div');
         block.elements.forEach(el => tempDiv.appendChild(el.cloneNode(true)));
+        
+        tempDiv.querySelectorAll('p, li').forEach(el => {
+            el.appendChild(document.createTextNode('\n'));
+        });
         
         let fullText = (tempDiv.textContent || '').trim();
 
@@ -86,7 +83,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         const images: Question['images'] = [];
         
         tempDiv.querySelectorAll('img').forEach(img => {
-            images.push({ data: img.src, in: 'question' }); // Default to question
+            images.push({ data: img.src, in: 'question' }); 
         });
 
         const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
@@ -99,7 +96,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/gs;
 
         let match;
-        const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
+        const textWithSentinel = remainingText + '_END_OF_TEXT_'; 
         while((match = optionExtractor.exec(textWithSentinel)) !== null) {
             const key = match[1].toUpperCase();
             const value = match[2].trim();
@@ -133,7 +130,6 @@ const getBase64Image = (imgSrc: string): { extension: 'png' | 'jpeg', data: stri
 
 
 const formatTextForExcel = (text: string): string => {
-    // This character replacement is crucial for some symbols that ExcelJS cannot handle.
     return text.replace(/∞/g, 'Infinity').replace(/√/g, 'sqrt');
 };
 
@@ -392,6 +388,8 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
+
+    
 
     
 

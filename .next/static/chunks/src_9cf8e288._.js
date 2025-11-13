@@ -372,7 +372,7 @@ const cleanText = (text)=>{
         '7': '⁷',
         '8': '⁸',
         '9': '⁹',
-        '+': -'⁺',
+        '+': '⁺',
         '-': '⁻',
         '(': '⁽',
         ')': '⁾'
@@ -405,16 +405,11 @@ const parseHtmlToQuestions = (html)=>{
     }
     const container = document.createElement('div');
     container.innerHTML = html;
-    // Preserve line breaks from paragraphs and lists
-    container.querySelectorAll('p, li').forEach((el)=>{
-        el.appendChild(document.createTextNode('\n'));
-    });
     const questions = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
     let currentBlockElements = [];
     let questionBlocks = [];
     const allElements = Array.from(container.children);
-    // Group elements into blocks, starting a new block for each question number.
     for(let i = 0; i < allElements.length; i++){
         const el = allElements[i];
         const elText = el.textContent?.trim() || '';
@@ -436,10 +431,12 @@ const parseHtmlToQuestions = (html)=>{
             elements: currentBlockElements
         });
     }
-    // Process each block
     for (const block of questionBlocks){
         const tempDiv = document.createElement('div');
         block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
+        tempDiv.querySelectorAll('p, li').forEach((el)=>{
+            el.appendChild(document.createTextNode('\n'));
+        });
         let fullText = (tempDiv.textContent || '').trim();
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
@@ -450,7 +447,7 @@ const parseHtmlToQuestions = (html)=>{
             images.push({
                 data: img.src,
                 in: 'question'
-            }); // Default to question
+            });
         });
         const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
         let parts = fullText.replace(qMatch[0], '').trim().split(optionMarkerRegex);
@@ -458,7 +455,7 @@ const parseHtmlToQuestions = (html)=>{
         let remainingText = parts.join('');
         const optionExtractor = /\s*[(]?([A-D])[).](.*?)(?=\s*[(]?[A-D][).]|_END_OF_TEXT_)/gs;
         let match;
-        const textWithSentinel = remainingText + '_END_OF_TEXT_'; // Append sentinel
+        const textWithSentinel = remainingText + '_END_OF_TEXT_';
         while((match = optionExtractor.exec(textWithSentinel)) !== null){
             const key = match[1].toUpperCase();
             const value = match[2].trim();
@@ -496,7 +493,6 @@ const getBase64Image = (imgSrc)=>{
     };
 };
 const formatTextForExcel = (text)=>{
-    // This character replacement is crucial for some symbols that ExcelJS cannot handle.
     return text.replace(/∞/g, 'Infinity').replace(/√/g, 'sqrt');
 };
 const generateExcel = async (questions)=>{
