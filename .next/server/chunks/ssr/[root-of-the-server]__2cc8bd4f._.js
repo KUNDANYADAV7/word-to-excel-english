@@ -481,10 +481,13 @@ const parseHtmlToQuestions = (html)=>{
     const elements = undefined;
     let currentQuestion;
     let accumulatingLines;
+    let isInsideQuestion;
     const questionStartRegex = undefined;
-    const isOptionMarker = undefined;
+    // Stricter option regex to avoid matching things like (ACC)
+    const optionMarkerRegex = undefined;
+    const horizontalOptionsRegex = undefined;
     const finalizeQuestion = undefined;
-    const el = undefined;
+    let i;
 };
 const getBase64Image = (imgSrc)=>{
     const extension = imgSrc.startsWith('data:image/jpeg') ? 'jpeg' : 'png';
