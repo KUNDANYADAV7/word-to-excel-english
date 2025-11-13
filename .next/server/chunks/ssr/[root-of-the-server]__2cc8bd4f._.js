@@ -481,6 +481,7 @@ const parseHtmlToQuestions = (html)=>{
     const tempDiv = undefined;
     const rawText = undefined;
     const questions = undefined;
+    // Split by question number (e.g., "1.", "2)", " 87. ")
     const questionBlocks = undefined;
     const block = undefined;
 };
@@ -792,14 +793,16 @@ const parseFile = async (file)=>{
             let pageItems = textContent.items.map((item)=>({
                     str: 'str' in item ? item.str : '',
                     y: 'transform' in item ? item.transform[5] : 0,
-                    x: 'transform' in item ? item.transform[4] : 0
+                    x: 'transform' in item ? item.transform[4] : 0,
+                    endX: 'transform' in item ? item.transform[4] + ('width' in item ? item.width : 0) : 0
                 }));
             images.forEach((img)=>{
                 pageItems.push({
                     str: `<img src="${img.data}" />`,
                     y: img.y,
-                    x: img.x
-                });
+                    x: img.x,
+                    endX: img.x + 50
+                }); // Assume a width for images
             });
             pageItems.sort((a, b)=>{
                 if (Math.abs(b.y - a.y) < 5) {
@@ -807,17 +810,32 @@ const parseFile = async (file)=>{
                 }
                 return b.y - a.y; // Sort by vertical position (top to bottom)
             });
-            let currentLine = '';
-            let lastY = pageItems.length > 0 ? pageItems[0].y : null;
-            for (const item of pageItems){
-                if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) {
-                    if (currentLine.trim()) combinedHtml += `<p>${currentLine.trim()}</p>`;
-                    currentLine = '';
+            let combinedLines = [];
+            if (pageItems.length > 0) {
+                let currentLine = pageItems[0].str;
+                let lastY = pageItems[0].y;
+                let lastEndX = pageItems[0].endX;
+                for(let i = 1; i < pageItems.length; i++){
+                    const item = pageItems[i];
+                    if (Math.abs(item.y - lastY) < 5) {
+                        // Check for significant horizontal gap to decide whether to merge
+                        if (item.x - lastEndX > 10) {
+                            currentLine += '  ' + item.str;
+                        } else {
+                            currentLine += item.str;
+                        }
+                    } else {
+                        combinedLines.push(currentLine);
+                        currentLine = item.str;
+                    }
+                    lastY = item.y;
+                    lastEndX = item.endX;
                 }
-                currentLine += item.str.includes('<img') ? item.str : ` ${item.str} `;
-                lastY = item.y;
+                combinedLines.push(currentLine);
             }
-            if (currentLine.trim()) combinedHtml += `<p>${currentLine.trim()}</p>`;
+            combinedLines.forEach((line)=>{
+                combinedHtml += `<p>${line}</p>`;
+            });
         }
         htmlContent = combinedHtml;
     } else {

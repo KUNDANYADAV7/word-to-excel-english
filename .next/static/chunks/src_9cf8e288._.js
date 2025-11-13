@@ -405,6 +405,8 @@ const parseHtmlToQuestions = (html)=>{
     }
     const container = document.createElement('div');
     container.innerHTML = html;
+    // The splitting logic relies on the question number starting on a new line.
+    // We'll ensure block-level elements like <p> and <li> create newlines.
     container.querySelectorAll('p, li').forEach((el)=>{
         const br = document.createElement('br');
         if (el.nextSibling) {
@@ -418,19 +420,24 @@ const parseHtmlToQuestions = (html)=>{
     tempDiv.innerHTML = rawTextWithNewlines;
     const rawText = tempDiv.textContent || '';
     const questions = [];
+    // Split by question number (e.g., "1.", "2)", " 87. ")
     const questionBlocks = rawText.split(/(?=\n\s*\d+\s*[.)])/).filter((block)=>block.trim());
     for (const block of questionBlocks){
         let currentText = block.trim();
+        // Remove the leading question number
         const qMatch = currentText.match(/^\s*(\d+)\s*[.)]/);
         if (!qMatch) continue;
         currentText = currentText.substring(qMatch[0].length).trim();
         const options = {};
         const images = []; // Images not handled in this version
+        // This regex is crucial. It looks for an option marker like (A) or A.
+        // The positive lookahead `(?=...)` splits the string *before* the marker, keeping the marker.
         const optionMarkerRegex = /(?=\s*[(][A-D][)]|\s*[A-D][.])/;
         const parts = currentText.split(optionMarkerRegex);
         let questionText = cleanText(parts[0]);
         if (parts.length > 1) {
             const optionsText = currentText.substring(parts[0].length);
+            // Split again to get individual options
             const optionParts = optionsText.split(/(?=\s*[(]?[A-D][).])/).filter((part)=>part.trim());
             for (const part of optionParts){
                 const optionMatch = part.trim().match(/^[(]?([A-D])[).]/);
@@ -759,14 +766,16 @@ const parseFile = async (file)=>{
             let pageItems = textContent.items.map((item)=>({
                     str: 'str' in item ? item.str : '',
                     y: 'transform' in item ? item.transform[5] : 0,
-                    x: 'transform' in item ? item.transform[4] : 0
+                    x: 'transform' in item ? item.transform[4] : 0,
+                    endX: 'transform' in item ? item.transform[4] + ('width' in item ? item.width : 0) : 0
                 }));
             images.forEach((img)=>{
                 pageItems.push({
                     str: `<img src="${img.data}" />`,
                     y: img.y,
-                    x: img.x
-                });
+                    x: img.x,
+                    endX: img.x + 50
+                }); // Assume a width for images
             });
             pageItems.sort((a, b)=>{
                 if (Math.abs(b.y - a.y) < 5) {
@@ -774,17 +783,32 @@ const parseFile = async (file)=>{
                 }
                 return b.y - a.y; // Sort by vertical position (top to bottom)
             });
-            let currentLine = '';
-            let lastY = pageItems.length > 0 ? pageItems[0].y : null;
-            for (const item of pageItems){
-                if (item.y !== null && lastY !== null && Math.abs(item.y - lastY) > 10) {
-                    if (currentLine.trim()) combinedHtml += `<p>${currentLine.trim()}</p>`;
-                    currentLine = '';
+            let combinedLines = [];
+            if (pageItems.length > 0) {
+                let currentLine = pageItems[0].str;
+                let lastY = pageItems[0].y;
+                let lastEndX = pageItems[0].endX;
+                for(let i = 1; i < pageItems.length; i++){
+                    const item = pageItems[i];
+                    if (Math.abs(item.y - lastY) < 5) {
+                        // Check for significant horizontal gap to decide whether to merge
+                        if (item.x - lastEndX > 10) {
+                            currentLine += '  ' + item.str;
+                        } else {
+                            currentLine += item.str;
+                        }
+                    } else {
+                        combinedLines.push(currentLine);
+                        currentLine = item.str;
+                    }
+                    lastY = item.y;
+                    lastEndX = item.endX;
                 }
-                currentLine += item.str.includes('<img') ? item.str : ` ${item.str} `;
-                lastY = item.y;
+                combinedLines.push(currentLine);
             }
-            if (currentLine.trim()) combinedHtml += `<p>${currentLine.trim()}</p>`;
+            combinedLines.forEach((line)=>{
+                combinedHtml += `<p>${line}</p>`;
+            });
         }
         htmlContent = combinedHtml;
     } else {
