@@ -407,16 +407,17 @@ const parseHtmlToQuestions = (html)=>{
     container.innerHTML = html;
     const questions = [];
     const questionStartRegex = /^\s*(\d+)\s*[.)]/;
-    const optionMarkerRegex = /(?:\s|\b|^)([A-D])[.)]|\((?:^|\s|\b)([A-D])\)/;
-    const combinedOptionRegex = new RegExp(optionMarkerRegex.source, 'g');
     let currentBlockElements = [];
-    let potentialQuestionBlocks = [];
+    let questionBlocks = [];
     // Group elements into blocks based on question numbers
-    for (const el of Array.from(container.children)){
+    const allElements = Array.from(container.children);
+    for(let i = 0; i < allElements.length; i++){
+        const el = allElements[i];
         const elText = el.textContent?.trim() || '';
+        // If it's a question number, start a new block
         if (questionStartRegex.test(elText)) {
             if (currentBlockElements.length > 0) {
-                potentialQuestionBlocks.push({
+                questionBlocks.push({
                     elements: currentBlockElements
                 });
             }
@@ -424,19 +425,27 @@ const parseHtmlToQuestions = (html)=>{
                 el
             ];
         } else {
-            currentBlockElements.push(el);
+            // If it's the last element, add it to the current block and push the block
+            if (i === allElements.length - 1) {
+                currentBlockElements.push(el);
+                questionBlocks.push({
+                    elements: currentBlockElements
+                });
+            } else {
+                currentBlockElements.push(el);
+            }
         }
     }
-    if (currentBlockElements.length > 0) {
-        potentialQuestionBlocks.push({
+    if (currentBlockElements.length > 0 && (questionBlocks.length === 0 || questionBlocks[questionBlocks.length - 1].elements !== currentBlockElements)) {
+        questionBlocks.push({
             elements: currentBlockElements
         });
     }
     // Process each block
-    for (const block of potentialQuestionBlocks){
+    for (const block of questionBlocks){
         const tempDiv = document.createElement('div');
         block.elements.forEach((el)=>tempDiv.appendChild(el.cloneNode(true)));
-        let fullText = (tempDiv.innerText || '').replace(/(\r\n|\n|\r)/gm, " \n ").trim();
+        let fullText = (tempDiv.innerText || '').replace(/(\r\n|\n|\r)/gm, " ").trim();
         const qMatch = fullText.match(questionStartRegex);
         if (!qMatch) continue;
         let questionText = '';
@@ -448,23 +457,27 @@ const parseHtmlToQuestions = (html)=>{
                 in: 'question'
             }); // Default to question
         });
-        let remainingText = fullText.replace(qMatch[0], '').trim();
-        const optionSplitRegex = /(?=(?:\s|\b)[A-D][.)]|\((?:^|\s|\b)[A-D]\))/;
-        const parts = remainingText.split(optionSplitRegex);
-        if (parts.length > 1) {
-            questionText = parts[0];
-            const optionParts = parts.slice(1);
-            for (const part of optionParts){
-                const keyMatch = part.trim().match(optionMarkerRegex);
-                if (keyMatch) {
-                    const key = (keyMatch[1] || keyMatch[2]).toUpperCase();
-                    const content = part.replace(keyMatch[0], '').trim();
-                    options[key] = cleanText(content);
+        // This regex finds all option markers (A, B, C, D) followed by a dot or within parentheses
+        const optionSplitterRegex = /(?=[(]?[A-D][).])/g;
+        let parts = fullText.replace(qMatch[0], '').trim().split(optionSplitterRegex);
+        // Check if the first part is question text or starts with an option
+        const firstPartIsOption = /^\s*[(]?[A-D][).]/i.test(parts[0]);
+        if (parts.length > 1 && firstPartIsOption) {
+            questionText = '';
+        } else if (parts.length > 0) {
+            questionText = parts.shift()?.trim() || '';
+        }
+        parts.forEach((part)=>{
+            const trimmedPart = part.trim();
+            if (trimmedPart) {
+                const optionKeyMatch = trimmedPart.match(/^\s*[(]?([A-D])[).]/i);
+                if (optionKeyMatch) {
+                    const key = optionKeyMatch[1].toUpperCase();
+                    const value = trimmedPart.substring(optionKeyMatch[0].length).trim();
+                    options[key] = cleanText(value);
                 }
             }
-        } else {
-            questionText = remainingText;
-        }
+        });
         questionText = cleanText(questionText);
         if (questionText || Object.keys(options).length > 0 || images.length > 0) {
             questions.push({

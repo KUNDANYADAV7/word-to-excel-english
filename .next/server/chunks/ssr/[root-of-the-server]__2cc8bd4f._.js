@@ -479,11 +479,11 @@ const parseHtmlToQuestions = (html)=>{
     const container = undefined;
     const questions = undefined;
     const questionStartRegex = undefined;
-    const optionMarkerRegex = undefined;
-    const combinedOptionRegex = undefined;
     let currentBlockElements;
-    let potentialQuestionBlocks;
-    const el = undefined;
+    let questionBlocks;
+    // Group elements into blocks based on question numbers
+    const allElements = undefined;
+    let i;
     const block = undefined;
 };
 const getImageDimensions = (imgSrc)=>{
