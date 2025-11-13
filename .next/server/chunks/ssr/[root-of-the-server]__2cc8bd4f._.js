@@ -438,13 +438,14 @@ const parseHtmlToQuestions = (html)=>{
     "TURBOPACK unreachable";
     const container = undefined;
     let processedHtml;
-    let currentQuestion;
-    let lastOptionKey;
-    const finalizeQuestion = undefined;
     const elements = undefined;
+    let currentQuestion;
+    let currentQuestionNumber;
+    let accumulatingQuestionText;
     const questionStartRegex = undefined;
     const optionMarkerRegex = undefined;
-    const globalOptionMarkerRegex = undefined;
+    const horizontalOptionRegex = undefined;
+    const finalizeQuestion = undefined;
     const el = undefined;
 };
 const getBase64Image = (imgSrc)=>{
