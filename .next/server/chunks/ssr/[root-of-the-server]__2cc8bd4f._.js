@@ -443,10 +443,8 @@ const parseHtmlToQuestions = (html)=>{
     const finalizeQuestion = undefined;
     const elements = undefined;
     const questionStartRegex = undefined;
-    // Regex to find any potential option marker.
-    // It looks for (A), A), A., B), B., etc.
-    const genericOptionMarkerRegex = undefined;
-    // Regex to find multiple option markers on a single line.
+    // Stricter regex for options: (A), A), A. but not (ACC)
+    const singleOptionMarkerRegex = undefined;
     const multiOptionLineRegex = undefined;
     const el = undefined;
 };
