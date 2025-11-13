@@ -50,7 +50,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     
     const elements = Array.from(container.children);
     const optionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-    const multiOptionRegex = /(?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/g;
+    const multiOptionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
 
     for (const el of elements) {
         if (!(el instanceof HTMLElement)) continue;
@@ -67,13 +67,16 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             currentQuestion = { questionText: '', options: {}, images: [] };
 
             let optionMatches = [...textContent.matchAll(multiOptionRegex)];
-
-            if (optionMatches.length > 1) { // Multiple options on one line
+            
+            if (optionMatches.length > 1 && optionMatches.every(m => textContent.substring(m.index! + m[0].length, (optionMatches.find(nextM => nextM.index! > m.index!)?.index ?? textContent.length)).trim().length < 20)) { // Multiple options on one line
                 currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
                 for (let i = 0; i < optionMatches.length; i++) {
                     const match = optionMatches[i];
-                    const key = (match[1] || match[2]).trim();
-                    const start = match.index + match[0].length;
+                    const keyMatch = match[0].match(/[A-Z]/);
+                    const key = keyMatch ? keyMatch[0] : '';
+                    if (!key) continue;
+
+                    const start = match.index! + match[0].length;
                     const end = (i + 1 < optionMatches.length) ? optionMatches[i+1].index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
                     currentQuestion.options[key] = optionText;
@@ -93,36 +96,21 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                 }
             }
         } else if (currentQuestion) {
-            let optionMatches = [...textContent.matchAll(multiOptionRegex)];
-
-            if (optionMatches.length > 1) { // Multiple options on a continuation line
-                for (let i = 0; i < optionMatches.length; i++) {
-                    const match = optionMatches[i];
-                    const key = (match[1] || match[2]).trim();
-                    const start = match.index + match[0].length;
-                    const end = (i + 1 < optionMatches.length) ? optionMatches[i+1].index : textContent.length;
-                    const optionText = textContent.substring(start, end).trim();
-                    currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + optionText;
-                    currentQuestion.options[key] = currentQuestion.options[key].trim();
-                    lastOptionKey = key;
-                }
-            } else { // Single option or continuation of previous content
-                const match = textContent.match(optionRegex);
-                if (match) { // This line starts with an option
-                    const optionLetter = (match[1] || match[2]).trim();
-                    lastOptionKey = optionLetter;
-                    const optionText = textContent.substring(match[0].length).trim();
-                    currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
-                    currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
-                } else { // This is a continuation of the previous part (question or last option)
-                     if (lastOptionKey) {
-                        currentQuestion.options[lastOptionKey] += ' ' + textContent;
-                        currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
-                     } else {
-                        currentQuestion.questionText += ' ' + textContent;
-                        currentQuestion.questionText = currentQuestion.questionText.trim();
-                     }
-                }
+            const match = textContent.match(optionRegex);
+            if (match && match.index === 0) { // This line starts with an option
+                const optionLetter = (match[1] || match[2]).trim();
+                lastOptionKey = optionLetter;
+                const optionText = textContent.substring(match[0].length).trim();
+                currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
+                currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
+            } else { // This is a continuation of the previous part (question or last option)
+                 if (lastOptionKey) {
+                    currentQuestion.options[lastOptionKey] += ' ' + textContent;
+                    currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
+                 } else {
+                    currentQuestion.questionText += ' ' + textContent;
+                    currentQuestion.questionText = currentQuestion.questionText.trim();
+                 }
             }
         }
         

@@ -412,7 +412,7 @@ const parseHtmlToQuestions = (html)=>{
     };
     const elements = Array.from(container.children);
     const optionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/;
-    const multiOptionRegex = /(?:\(\s*[A-Z]\s*\)|[A-Z]\s*[.)])/g;
+    const multiOptionRegex = /(?:\(\s*([A-Z])\s*\)|([A-Z])\s*[.)])/g;
     for (const el of elements){
         if (!(el instanceof HTMLElement)) continue;
         let textContent = el.textContent?.trim() || '';
@@ -430,11 +430,13 @@ const parseHtmlToQuestions = (html)=>{
             let optionMatches = [
                 ...textContent.matchAll(multiOptionRegex)
             ];
-            if (optionMatches.length > 1) {
+            if (optionMatches.length > 1 && optionMatches.every((m)=>textContent.substring(m.index + m[0].length, optionMatches.find((nextM)=>nextM.index > m.index)?.index ?? textContent.length).trim().length < 20)) {
                 currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
                 for(let i = 0; i < optionMatches.length; i++){
                     const match = optionMatches[i];
-                    const key = (match[1] || match[2]).trim();
+                    const keyMatch = match[0].match(/[A-Z]/);
+                    const key = keyMatch ? keyMatch[0] : '';
+                    if (!key) continue;
                     const start = match.index + match[0].length;
                     const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
@@ -455,36 +457,20 @@ const parseHtmlToQuestions = (html)=>{
                 }
             }
         } else if (currentQuestion) {
-            let optionMatches = [
-                ...textContent.matchAll(multiOptionRegex)
-            ];
-            if (optionMatches.length > 1) {
-                for(let i = 0; i < optionMatches.length; i++){
-                    const match = optionMatches[i];
-                    const key = (match[1] || match[2]).trim();
-                    const start = match.index + match[0].length;
-                    const end = i + 1 < optionMatches.length ? optionMatches[i + 1].index : textContent.length;
-                    const optionText = textContent.substring(start, end).trim();
-                    currentQuestion.options[key] = (currentQuestion.options[key] || '') + ' ' + optionText;
-                    currentQuestion.options[key] = currentQuestion.options[key].trim();
-                    lastOptionKey = key;
-                }
+            const match = textContent.match(optionRegex);
+            if (match && match.index === 0) {
+                const optionLetter = (match[1] || match[2]).trim();
+                lastOptionKey = optionLetter;
+                const optionText = textContent.substring(match[0].length).trim();
+                currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
+                currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
             } else {
-                const match = textContent.match(optionRegex);
-                if (match) {
-                    const optionLetter = (match[1] || match[2]).trim();
-                    lastOptionKey = optionLetter;
-                    const optionText = textContent.substring(match[0].length).trim();
-                    currentQuestion.options[optionLetter] = (currentQuestion.options[optionLetter] || '') + ' ' + optionText;
-                    currentQuestion.options[optionLetter] = currentQuestion.options[optionLetter].trim();
+                if (lastOptionKey) {
+                    currentQuestion.options[lastOptionKey] += ' ' + textContent;
+                    currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
                 } else {
-                    if (lastOptionKey) {
-                        currentQuestion.options[lastOptionKey] += ' ' + textContent;
-                        currentQuestion.options[lastOptionKey] = currentQuestion.options[lastOptionKey].trim();
-                    } else {
-                        currentQuestion.questionText += ' ' + textContent;
-                        currentQuestion.questionText = currentQuestion.questionText.trim();
-                    }
+                    currentQuestion.questionText += ' ' + textContent;
+                    currentQuestion.questionText = currentQuestion.questionText.trim();
                 }
             }
         }
