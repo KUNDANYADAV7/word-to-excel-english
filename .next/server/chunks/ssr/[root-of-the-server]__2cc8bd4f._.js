@@ -440,10 +440,9 @@ const parseHtmlToQuestions = (html)=>{
     let processedHtml;
     const elements = undefined;
     let currentQuestion;
-    let currentQuestionNumber;
-    let accumulatingQuestionText;
+    let accumulatingText;
     const questionStartRegex = undefined;
-    const optionMarkerRegex = undefined;
+    const verticalOptionMarkerRegex = undefined;
     const horizontalOptionRegex = undefined;
     const finalizeQuestion = undefined;
     const el = undefined;
