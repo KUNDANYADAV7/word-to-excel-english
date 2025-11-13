@@ -405,7 +405,6 @@ const parseHtmlToQuestions = (html)=>{
     let lastOptionKey = null;
     const finalizeQuestion = ()=>{
         if (currentQuestion) {
-            // Clean up question and option text one last time before pushing
             currentQuestion.questionText = currentQuestion.questionText.replace(/\s+/g, ' ').trim();
             for(const key in currentQuestion.options){
                 currentQuestion.options[key] = currentQuestion.options[key].replace(/\s+/g, ' ').trim();
@@ -434,7 +433,6 @@ const parseHtmlToQuestions = (html)=>{
                 options: {},
                 images: []
             };
-            // Check for multiple options on the same line (horizontal layout)
             const optionMatches = [
                 ...textContent.matchAll(multiOptionLineRegex)
             ];
@@ -450,8 +448,8 @@ const parseHtmlToQuestions = (html)=>{
                     const end = nextMatch ? nextMatch.index : textContent.length;
                     const optionText = textContent.substring(start, end).trim();
                     currentQuestion.options[key] = optionText;
-                    lastOptionKey = key;
                 }
+                lastOptionKey = null; // Reset lastOptionKey as all options are processed
             } else {
                 const match = textContent.match(optionMarkerRegex);
                 if (match) {

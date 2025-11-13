@@ -42,7 +42,6 @@ const parseHtmlToQuestions = (html: string): Question[] => {
 
     const finalizeQuestion = () => {
         if (currentQuestion) {
-            // Clean up question and option text one last time before pushing
             currentQuestion.questionText = currentQuestion.questionText.replace(/\s+/g, ' ').trim();
             for (const key in currentQuestion.options) {
                 currentQuestion.options[key] = currentQuestion.options[key].replace(/\s+/g, ' ').trim();
@@ -73,12 +72,12 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             }
 
             currentQuestion = { questionText: '', options: {}, images: [] };
-
-            // Check for multiple options on the same line (horizontal layout)
+            
             const optionMatches = [...textContent.matchAll(multiOptionLineRegex)];
-
-            if (optionMatches.length > 1) {
+            
+            if (optionMatches.length > 1) { // Horizontal options
                 currentQuestion.questionText = textContent.substring(0, optionMatches[0].index).trim();
+                
                 for (let i = 0; i < optionMatches.length; i++) {
                     const currentMatch = optionMatches[i];
                     const nextMatch = optionMatches[i + 1];
@@ -92,16 +91,16 @@ const parseHtmlToQuestions = (html: string): Question[] => {
                     
                     const optionText = textContent.substring(start, end).trim();
                     currentQuestion.options[key] = optionText;
-                    lastOptionKey = key;
                 }
-            } else { // Handle single option or just question text (vertical layout)
+                lastOptionKey = null; // Reset lastOptionKey as all options are processed
+            } else { // Vertical options or just question text
                 const match = textContent.match(optionMarkerRegex);
                 if (match) {
                     currentQuestion.questionText = textContent.substring(0, match.index).trim();
                     const keyMatch = match[0].match(/[A-Z]/);
                     if (keyMatch) {
                       const key = keyMatch[0];
-                      const optionText = textContent.substring(match.index + match[0].length).trim();
+                      const optionText = textContent.substring(match.index! + match[0].length).trim();
                       currentQuestion.options[key] = optionText;
                       lastOptionKey = key;
                     }
@@ -112,7 +111,7 @@ const parseHtmlToQuestions = (html: string): Question[] => {
             }
         } else if (currentQuestion) {
             const match = textContent.match(optionMarkerRegex);
-            if (match) { // This line is a new option
+            if (match) { // This line is a new option (vertical layout)
                 const keyMatch = match[0].match(/[A-Z]/);
                 if(keyMatch) {
                     const key = keyMatch[0];
@@ -428,5 +427,7 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
+
+    
 
     
