@@ -18,7 +18,7 @@ const DEFAULT_ROW_HEIGHT_IN_POINTS = 21.75;
 const POINTS_TO_PIXELS = 4 / 3;
 const IMAGE_MARGIN_PIXELS = 15;
 
-const cleanText = (text: string) => {
+const cleanText = (text: string): string => {
     if (!text) return '';
     let cleaned = text.replace(/&nbsp;/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, ' ').trim();
 
@@ -41,65 +41,76 @@ const parseHtmlToQuestions = (html: string): Question[] => {
     if (typeof window === 'undefined') return questions;
 
     const container = document.createElement('div');
-    container.innerHTML = html.replace(/<p><\/p>/g, ''); // Remove empty paragraphs
+    container.innerHTML = html.replace(/<p><\/p>|<b><\/b>/g, '').replace(/<p>\s*&nbsp;\s*<\/p>/g, '');
 
     const elements = Array.from(container.children);
     let currentQuestion: Question | null = null;
     let accumulatingLines: { text: string, html: string }[] = [];
 
-    const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]/;
-    const optionMarkerRegex = /(?:\s|^)(?:([A-D])\s*[.)]|\(\s*([A-D])\s*\))\s+/;
-    const horizontalOptionMarkerRegex = /(?:^|\s)(?:([A-D])\s*[.)]|\(\s*([A-D])\s*\))/g;
+    const questionStartRegex = /^\s*(?:Q|Question)?\s*(\d+)\s*[.)]/i;
+    const isOptionMarker = (text: string): boolean => /^\s*(?:([A-Z])\s*[.)]|\(\s*([A-Z])\s*\))/i.test(text);
 
     const finalizeQuestion = () => {
-        if (currentQuestion && accumulatingLines.length > 0) {
-            const fullText = accumulatingLines.map(line => line.text).join(' ').trim();
-            const fullHtml = accumulatingLines.map(line => line.html).join('');
-
+        if (currentQuestion) {
+            const fullBlockHtml = accumulatingLines.map(line => line.html).join('');
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = fullHtml;
-            const imagesInBlock = Array.from(tempDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: 'question' as 'question' | string }));
+            tempDiv.innerHTML = fullBlockHtml;
 
-            let questionText = fullText;
-            let options: { [key: string]: string } = {};
+            const fullBlockText = cleanText(tempDiv.innerText);
 
-            const optionMatches = [...fullText.matchAll(horizontalOptionMarkerRegex)];
+            let questionText = fullBlockText;
+            const options: { [key: string]: string } = {};
 
-            if (optionMatches.length > 0) {
-                let firstOptionIndex = -1;
-                // Find first valid option marker that is not part of a word e.g. (BP)
-                for(const match of optionMatches){
-                    const key = (match[1] || match[2] || '').trim();
-                    if(key >= 'A' && key <= 'D'){
-                       firstOptionIndex = match.index ?? -1;
-                       break;
-                    }
+            const optionMarkerRegex = /(?:^|\s|&nbsp;)(?:([A-D])\s*[.)]|\(\s*([A-D])\s*\))/gi;
+            const matches = [...fullBlockText.matchAll(optionMarkerRegex)];
+
+            let questionEndIndex = -1;
+
+            if (matches.length > 0) {
+                // Find the first valid option marker index
+                for (const match of matches) {
+                     const key = (match[1] || match[2] || '').toUpperCase();
+                     if (key >= 'A' && key <= 'D') {
+                        questionEndIndex = match.index || 0;
+                        break;
+                     }
                 }
-                
-                if (firstOptionIndex !== -1) {
-                    questionText = fullText.substring(0, firstOptionIndex).trim();
+            }
+            
+            if (questionEndIndex !== -1) {
+                questionText = fullBlockText.substring(0, questionEndIndex).trim();
 
-                    for (let i = 0; i < optionMatches.length; i++) {
-                        const match = optionMatches[i];
-                        const key = (match[1] || match[2] || '').trim();
-                         if (!(key >= 'A' && key <= 'D')) continue;
+                for (let i = 0; i < matches.length; i++) {
+                    const match = matches[i];
+                    const key = (match[1] || match[2] || '').toUpperCase();
+                    if (!key || key < 'A' || key > 'D') continue;
 
-                        const start = match.index! + match[0].length;
-                        const end = (i + 1 < optionMatches.length) ? optionMatches[i + 1].index : fullText.length;
-                        const optionText = fullText.substring(start, end).trim();
-                        options[key] = cleanText(optionText);
+                    const start = (match.index || 0) + match[0].length;
+                    const nextMatch = matches.find((m, j) => j > i && (m[1] || m[2]));
+                    const end = nextMatch ? (nextMatch.index || fullBlockText.length) : fullBlockText.length;
+                    const optionText = fullBlockText.substring(start, end).trim();
+
+                    if(options[key] === undefined) { // Avoid overwriting vertical options
+                        options[key] = optionText;
                     }
                 }
             }
 
+            // Clean up question text from its number
             currentQuestion.questionText = cleanText(questionText.replace(questionStartRegex, ''));
+            
+            // Merge horizontal options with any previously found vertical options
             currentQuestion.options = { ...currentQuestion.options, ...options };
+            
+            // Extract images from the entire finalized block
+             const tempImageDiv = document.createElement('div');
+             tempImageDiv.innerHTML = fullBlockHtml;
+             currentQuestion.images.push(...Array.from(tempImageDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: 'question' as const })));
 
-            // Distribute images to question or options based on their location
-            currentQuestion.images.push(...imagesInBlock);
-        }
-        if (currentQuestion) {
-            questions.push(currentQuestion);
+
+            if (currentQuestion.questionText || Object.keys(currentQuestion.options).length > 0) {
+                questions.push(currentQuestion);
+            }
         }
         currentQuestion = null;
         accumulatingLines = [];
@@ -109,47 +120,94 @@ const parseHtmlToQuestions = (html: string): Question[] => {
         if (!(el instanceof HTMLElement)) continue;
 
         const textContent = el.textContent || '';
-        const htmlContent = el.innerHTML;
+        const htmlContent = el.outerHTML; // Use outerHTML to preserve the element itself
         const cleanedText = cleanText(textContent);
 
         const isNewQuestion = questionStartRegex.test(cleanedText);
-        const isVerticalOption = optionMarkerRegex.test(cleanedText);
-
+        const isVerticalOption = isOptionMarker(cleanedText);
+        
         if (isNewQuestion) {
             finalizeQuestion();
             currentQuestion = { questionText: '', options: {}, images: [] };
             accumulatingLines.push({ text: cleanedText, html: htmlContent });
         } else if (currentQuestion) {
             if (isVerticalOption) {
-                // This line is a vertical option. Finalize previous text as question.
+                // This line is a distinct vertical option.
+                // Finalize what we have accumulated so far as the question part.
                 if (accumulatingLines.length > 0) {
-                    const questionBlockText = accumulatingLines.map(line => line.text).join(' ');
-                    currentQuestion.questionText = cleanText(questionBlockText.replace(questionStartRegex, ''));
-
                     const questionBlockHtml = accumulatingLines.map(line => line.html).join('');
-                     const tempDiv = document.createElement('div');
-                     tempDiv.innerHTML = questionBlockHtml;
-                     currentQuestion.images.push(...Array.from(tempDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: 'question' as const })));
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = questionBlockHtml;
 
+                    let questionBlockText = cleanText(tempDiv.innerText);
+                     const optionMarkerRegex = /(?:^|\s|&nbsp;)(?:([A-D])\s*[.)]|\(\s*([A-D])\s*\))/gi;
+                     const matches = [...questionBlockText.matchAll(optionMarkerRegex)];
+                     let questionEndIndex = -1;
+
+                     if (matches.length > 0) {
+                       for (const match of matches) {
+                         const key = (match[1] || match[2] || '').toUpperCase();
+                         if (key >= 'A' && key <= 'D') {
+                           questionEndIndex = match.index || 0;
+                           break;
+                         }
+                       }
+                     }
+
+                     if(questionEndIndex !== -1) {
+                        const questionPart = questionBlockText.substring(0, questionEndIndex).trim();
+                        const optionsPart = questionBlockText.substring(questionEndIndex).trim();
+                        currentQuestion.questionText = cleanText(questionPart.replace(questionStartRegex, ''));
+                        
+                        // Parse horizontal options found within the question block
+                         const horizontalMatches = [...optionsPart.matchAll(optionMarkerRegex)];
+                         for (let i = 0; i < horizontalMatches.length; i++) {
+                            const match = horizontalMatches[i];
+                            const key = (match[1] || match[2] || '').toUpperCase();
+                            if (!key || key < 'A' || key > 'D') continue;
+                            const start = (match.index || 0) + match[0].length;
+                            const nextMatch = horizontalMatches.find((m, j) => j > i && (m[1] || m[2]));
+                            const end = nextMatch ? (nextMatch.index || optionsPart.length) : optionsPart.length;
+                             currentQuestion.options[key] = optionsPart.substring(start, end).trim();
+                         }
+                     } else {
+                        currentQuestion.questionText = cleanText(questionBlockText.replace(questionStartRegex, ''));
+                     }
+
+
+                    // Add images from the question block
+                    currentQuestion.images.push(...Array.from(tempDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: 'question' as const })));
                     accumulatingLines = [];
                 }
+
+                // Now process the vertical option
+                const optionMatch = cleanedText.match(/^\s*(?:([A-Z])\s*[.)]|\(\s*([A-Z])\s*\))/i);
+                const key = (optionMatch![1] || optionMatch![2]).toUpperCase();
+                const optionText = cleanedText.substring(optionMatch![0].length).trim();
                 
-                const optionMatch = cleanedText.match(optionMarkerRegex);
-                const key = (optionMatch![1] || optionMatch![2]).trim();
-                const optionText = cleanedText.replace(optionMarkerRegex, '').trim();
-                currentQuestion.options[key] = cleanText(optionText);
+                if(currentQuestion.options[key] === undefined) {
+                    currentQuestion.options[key] = optionText;
+                }
 
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = htmlContent;
                 currentQuestion.images.push(...Array.from(tempDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: `option${key}` })));
-
             } else {
-                // This line is part of the current question block
-                accumulatingLines.push({ text: cleanedText, html: htmlContent });
+                // This line is part of the current question or a multi-line vertical option
+                const lastOptionKey = Object.keys(currentQuestion.options).pop();
+                if(lastOptionKey && !isNewQuestion && Object.keys(currentQuestion.options).length > 0 && accumulatingLines.length === 0){
+                    currentQuestion.options[lastOptionKey] += ' ' + cleanedText;
+                    // Also append images to the last option
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = htmlContent;
+                    currentQuestion.images.push(...Array.from(tempDiv.querySelectorAll('img')).map(img => ({ data: img.src, in: `option${lastOptionKey}` })));
+                } else {
+                    accumulatingLines.push({ text: cleanedText, html: htmlContent });
+                }
             }
         }
     }
-    finalizeQuestion(); // Finalize the last question
+    finalizeQuestion();
 
     return questions.filter(q => q.questionText || Object.keys(q.options).length > 0 || q.images.length > 0);
 };
@@ -430,3 +488,5 @@ export const parseFile = async (file: File): Promise<Question[]> => {
     
     return parseHtmlToQuestions(htmlContent);
 };
+
+    

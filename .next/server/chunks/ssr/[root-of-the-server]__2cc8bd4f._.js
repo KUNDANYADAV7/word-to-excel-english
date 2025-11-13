@@ -482,8 +482,7 @@ const parseHtmlToQuestions = (html)=>{
     let currentQuestion;
     let accumulatingLines;
     const questionStartRegex = undefined;
-    const optionMarkerRegex = undefined;
-    const horizontalOptionMarkerRegex = undefined;
+    const isOptionMarker = undefined;
     const finalizeQuestion = undefined;
     const el = undefined;
 };
